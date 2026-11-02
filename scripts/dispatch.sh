@@ -51,7 +51,10 @@ route() {
     done <<<"$list"
   done
   while read -r n labels; do
-    case ",$labels," in *,blocked,*) continue;; *,role:manager,*|*,status:test-failed,*) echo "manager $n"; return;; esac
+    case ",$labels," in
+      *,blocked,*|*,status:ready-to-merge,*) continue;;   # human decides these
+      *,role:manager,*|*,status:test-failed,*) echo "manager $n"; return;;
+    esac
   done <<<"$list"
   # 6) a held ticket (no status yet) whose dependencies are now merged: manager releases it
   while read -r n labels; do
@@ -96,6 +99,18 @@ run_hermes() {
       total_tokens:$u[0].total_including_auxiliary.total_tokens, actual_cost_usd:0,
       list_price_estimate_usd:$u[0].total_including_auxiliary.estimated_cost_usd, output:$out}'
   tail -n 3 "$out"
+  # A run that ended on provider limits did not complete its work: pause Hermes until reset.
+  if [ "$rc" -ne 0 ] || ! jq -e '.completed == true and .failed != true' "$usage" >/dev/null 2>&1; then
+    grep -qiE '429|RESOURCE_EXHAUSTED|rate.?limit|quota' "$out" && next_reset > "$LOG/quota/hermes-paused-until"
+    return 1
+  fi
+}
+
+# Gemini free tier resets at midnight Pacific (08:00 UTC in winter).
+next_reset() {
+  local t; t="$(date -u -d 'today 08:00' +%s)"
+  [ "$t" -gt "$(date +%s)" ] || t="$(date -u -d 'tomorrow 08:00' +%s)"
+  echo "$t"
 }
 
 # OpenClaw does not switch models mid-turn once a tool has run (replay safety), so on a
@@ -127,9 +142,7 @@ $(cat "${out%.json}.err" 2>/dev/null)"
       if grep -qE '\(429\)|RESOURCE_EXHAUSTED' <<<"$text"; then
         if [ -z "$retried" ]; then retried=1; sleep 65; continue; fi   # per-minute window
         # per-day quota: Gemini free tier resets at midnight Pacific (08:00 UTC in winter)
-        local reset; reset="$(date -u -d 'today 08:00' +%s)"
-        [ "$reset" -gt "$(date +%s)" ] || reset="$(date -u -d 'tomorrow 08:00' +%s)"
-        printf '%s\t%s\n' "$m" "$reset" >> "$LEDGER"
+        printf '%s\t%s\n' "$m" "$(next_reset)" >> "$LEDGER"
       fi
       retried=""; break
     done
@@ -143,10 +156,41 @@ if [ "$agent" = "next" ]; then
   [ "$agent" = "idle" ] && { echo "idle: nothing actionable"; exit 0; }
   [ "$n" = "plan" ] && n=""
 fi
+case "$agent" in manager|reviewer)
+  p="$(cat "$LOG/quota/hermes-paused-until" 2>/dev/null || echo 0)"
+  [ "$p" -gt "$(date +%s)" ] && { echo "hermes paused for quota until $(date -u -d "@$p" +%FT%TZ)"; exit 0; };;
+esac
 echo "== dispatch: $agent ${n:+#$n} ($(date -u +%FT%TZ))"
+
+# Role prompts and helper scripts come from main; refresh them before every run.
+SRC="$HOME/agents/_src"
+git -C "$SRC" pull -q --ff-only || true
+for id in manager reviewer; do cp "$SRC/agents/hermes/$id/SOUL.md" "$HOME/.hermes/profiles/$id/SOUL.md"; done
+for id in backend ui tester; do cp "$SRC/agents/openclaw/$id/AGENTS.md" "$HOME/agents/$id/AGENTS.md"; done
+
+labels_of() { [ -n "$1" ] && gh issue view "$1" --repo "$REPO" --json labels --jq '[.labels[].name] | sort | join(",")' || true; }
+before="$(labels_of "$n")"
 msg="$(prompt_for "$agent" "$n")"
+rc=0
 case "$agent" in
-  manager|reviewer) run_hermes "$agent" "$n" "$msg";;
-  backend|ui|tester) run_openclaw "$agent" "$n" "$msg";;
+  manager|reviewer) run_hermes "$agent" "$n" "$msg" || rc=$?;;
+  backend|ui|tester) run_openclaw "$agent" "$n" "$msg" || rc=$?;;
   *) echo "unknown agent: $agent"; exit 2;;
 esac
+
+# Loop guard: two completed runs that leave a ticket's labels unchanged mean the agent is
+# stuck; park the ticket for the manager/human instead of spending more free quota on it.
+if [ -n "$n" ] && [ "$rc" -eq 0 ]; then
+  strikes="$LOG/strikes-$agent-$n"
+  if [ "$(labels_of "$n")" = "$before" ]; then
+    echo x >> "$strikes"
+    if [ "$(wc -l < "$strikes")" -ge 2 ]; then
+      gh issue edit "$n" --repo "$REPO" --add-label blocked >/dev/null
+      gh issue comment "$n" --repo "$REPO" --body "[dispatcher] BLOCKED: two completed \`$agent\` runs left this ticket's labels unchanged ($before). Parked for the manager/human. Runs are logged in runs.jsonl." >/dev/null
+      rm -f "$strikes"; echo "loop guard: #$n blocked"
+    fi
+  else
+    rm -f "$strikes"
+  fi
+fi
+exit "$rc"

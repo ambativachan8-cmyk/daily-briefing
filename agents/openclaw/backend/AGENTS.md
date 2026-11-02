@@ -15,7 +15,8 @@ Read `agents/PROTOCOL.md` and `docs/PRODUCT_BRIEF.md` in the repo before you sta
 - Every run is stored, including failed runs with the error message.
 - Write or update tests for what you change and run them before opening the PR.
 - Open the PR with `Closes #<issue>`, a short summary, and the test command you ran with
-  its result. Then hand off to the reviewer as described in the protocol.
+  its result. Then hand off to the reviewer with
+  `~/agents/_src/scripts/ticket.sh move <issue> in-review reviewer` (never edit labels by hand).
 - When a ticket comes back (`status:changes-requested` / `status:test-failed`), read every
   comment, fix each point, push to the same branch, and reply point by point.
 

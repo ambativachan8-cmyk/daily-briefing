@@ -24,8 +24,12 @@ Start every issue/PR comment with your signature tag.
 - Send-back states: `status:changes-requested` (reviewer), `status:test-failed` (tester)
 - Kind: `type:feature`, `type:bug`, `type:chore`
 
-An issue has exactly one `role:*` and one `status:*` label at a time. When you change state,
-remove the old `status:*` label in the same command.
+An issue has exactly one `role:*` and one `status:*` label at a time. Change state only with
+the helper, which swaps both labels in one step:
+
+```
+~/agents/_src/scripts/ticket.sh move <issue> <status> <role>   # e.g. move 1 in-review reviewer
+```
 
 ## Lifecycle
 

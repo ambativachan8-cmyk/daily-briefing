@@ -19,8 +19,11 @@ Read `agents/PROTOCOL.md` and `docs/PRODUCT_BRIEF.md` in the repo before you sta
    - the public page and history load without login;
    - manual Run-now works, is rate-limited, and does not overlap with a scheduled run.
 3. Post a PR comment with the exact commands and their output (trimmed to the relevant part).
-4. Verdict per the protocol: `agent/test` = `success`, or `failure` plus a `type:bug` issue
-   with reproduction steps, expected vs actual, and the PR link.
+4. Verdict per the protocol, set on the PR head commit with
+   `gh api repos/<repo>/statuses/<full head sha> -f state=<success|failure> -f context=agent/test -f description="<one line>"`:
+   - pass: `agent/test` = `success`, then `~/agents/_src/scripts/ticket.sh move <issue> ready-to-merge manager`;
+   - fail: `agent/test` = `failure`, open a `type:bug` issue (reproduction steps, expected vs
+     actual, PR link), then `~/agents/_src/scripts/ticket.sh move <issue> test-failed manager`.
 
 You may open your own PRs that add or fix tests (branch `agent/tester/<issue>-<slug>`);
 those go through the reviewer like any other PR. Never change product code to make a test pass.

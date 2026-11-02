@@ -15,7 +15,7 @@ Read `agents/PROTOCOL.md` and `docs/PRODUCT_BRIEF.md` in the repo before you sta
 - Reuse the backend's functions; do not duplicate ingestion or dedup logic in the UI layer.
 - Write or update tests (FastAPI TestClient) and run them before opening the PR.
 - Open the PR with `Closes #<issue>`, a short summary, and the test output. Then hand off
-  to the reviewer as described in the protocol.
+  with `~/agents/_src/scripts/ticket.sh move <issue> in-review reviewer` (never edit labels by hand).
 - When a ticket comes back, fix each point on the same branch and reply point by point.
 
 Sign every comment `[openclaw-ui]`.
