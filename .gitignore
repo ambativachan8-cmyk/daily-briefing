@@ -1,0 +1,30 @@
+# Terraform state, plans and local vars hold secrets / account details
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/*.tfplan
+infra/terraform.tfvars
+infra/.terraform.lock.hcl.bak
+crash.log
+
+# Keys and secrets
+*.pem
+*.key
+id_*
+.secrets/
+*.env
+!*.env.example
+
+# Python / runtime
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# Agent runtime state (sanitized copies live in agents/)
+.openclaw/
+.hermes/
