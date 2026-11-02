@@ -13,6 +13,9 @@ Description=Daily Briefing agent team: route and run the next ticket
 [Service]
 Type=oneshot
 Environment=PATH=$HOME/.local/bin:$HOME/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+# Continuous deployment: redeploy merged main before routing the next ticket ("-" = a failed
+# deploy never stops the team; the previous build keeps serving).
+ExecStartPre=-/bin/bash $HOME/agents/_src/scripts/deploy_app.sh --if-changed
 ExecStart=/bin/bash $HOME/agents/_src/scripts/dispatch.sh next
 StandardOutput=append:$HOME/logs/dispatch.log
 StandardError=append:$HOME/logs/dispatch.log

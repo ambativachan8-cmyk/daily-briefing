@@ -83,6 +83,12 @@ resource "aws_instance" "vm" {
   tags = {
     Name = var.name
   }
+
+  # A newer Ubuntu image or edited cloud-init must not replace the running VM (it holds the
+  # agents, their sessions and logs). Fresh applies still pick the latest image.
+  lifecycle {
+    ignore_changes = [ami, user_data]
+  }
 }
 
 # Stable public IP so the briefing URL survives stop/start.
