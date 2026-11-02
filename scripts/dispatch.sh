@@ -161,18 +161,75 @@ $(cat "${out%.json}.err" 2>/dev/null)"
   echo "all models exhausted for $agent; see $LEDGER"; return 1
 }
 
-# Merge decisions are human. When a ticket is ready-to-merge and both required statuses are
-# success on its PR's current head, post the evidence once per head commit and stop there.
+# One tiny request per Gemini model in the agent's chain (primary first), stopping at the
+# first real answer, so a probe costs at most one request of quota. Prints one of:
+#   ok <model>                      HTTP 200 with non-empty generated text
+#   pause <epoch> <reason>          nothing answered; retry at the soonest sensible time
+# 429 per-day -> next reset; 429 per-minute -> 2 min; 401/403/404/400 (key or model
+# problem, needs a human) -> 1 h; 5xx, timeout, network error, malformed 200 -> 15 min.
+probe_hermes() {
+  local agent="$1" m code body now t retry=0 reasons="" models
+  models="$(hermes -p "$agent" config get model.default
+            /usr/bin/python3 -c 'import sys, yaml
+for e in (yaml.safe_load(open(sys.argv[1])) or {}).get("fallback_providers") or []:
+    if e.get("provider") == "gemini": print(e["model"])' "$HOME/.hermes/profiles/$agent/config.yaml")"
+  body="$(mktemp)"; now="$(date +%s)"
+  for m in $models; do
+    : > "$body"
+    code="$(set -a; . "$HOME/.secrets/agents.env"; curl -s --max-time 30 -o "$body" -w '%{http_code}' \
+      -H "x-goog-api-key: $GEMINI_API_KEY_HERMES" -H 'content-type: application/json' \
+      -d '{"contents":[{"parts":[{"text":"Reply with OK"}]}],"generationConfig":{"maxOutputTokens":512}}' \
+      "https://generativelanguage.googleapis.com/v1beta/models/$m:generateContent" || true)"
+    if [ "$code" = 200 ] && jq -e '[.candidates[0].content.parts[]?.text // empty] | join("") | length > 0' "$body" >/dev/null 2>&1; then
+      echo "$(date -u +%FT%TZ) $agent $m 200 ok" >> "$LOG/quota/probes.log"
+      rm -f "$body"; echo "ok $m"; return
+    fi
+    case "$code" in
+      429) if jq -e '[.error.details[]?.violations[]?.quotaId // ""] | any(test("PerDay"))' "$body" >/dev/null 2>&1
+           then t="$(next_reset)"; else t=$(( now + 120 )); fi;;
+      400|401|403|404) t=$(( now + 3600 )); echo >&2 "ATTENTION: $agent probe of $m got HTTP $code: $(jq -r '.error.message // "no message"' "$body" 2>/dev/null | head -c 160)";;
+      200) code="200-malformed"; t=$(( now + 900 ));;
+      *) t=$(( now + 900 ));;   # 5xx, 000 = timeout/network
+    esac
+    echo "$(date -u +%FT%TZ) $agent $m $code" >> "$LOG/quota/probes.log"
+    reasons="$reasons$m=$code,"
+    { [ "$retry" -eq 0 ] || [ "$t" -lt "$retry" ]; } && retry="$t"
+  done
+  rm -f "$body"
+  echo "pause $retry ${reasons%,}"
+}
+
+# Merge decisions are human. A ticket is merge-ready only when, on its PR's exact current
+# head commit, the newest agent/review and the newest agent/test status are both success
+# (older or duplicate statuses on that commit are ignored; statuses on earlier commits never
+# count). The evidence is posted once per head commit; nothing is merged here.
+latest_gates() {   # <sha> -> "agent/review=<state> agent/test=<state>" from the newest status of each
+  gh api --paginate "repos/$REPO/commits/$1/statuses?per_page=100" --jq '.[]' \
+    | jq -rs '[.[] | select(.context == "agent/review" or .context == "agent/test")]
+              | group_by(.context) | map(max_by([.created_at, .id]))
+              | map("\(.context)=\(.state)") | sort | join(" ")'
+}
 merge_decisions() {
-  local n pr sha states
+  local n pr sha gates evidence
   for n in $(gh issue list --repo "$REPO" --state open --label status:ready-to-merge --json number --jq '.[].number'); do
     pr="$(pr_for "$n")"; [ -n "$pr" ] || continue
     sha="$(gh pr view "$pr" --repo "$REPO" --json headRefOid --jq .headRefOid)"
-    states="$(gh api "repos/$REPO/commits/$sha/status" --jq '[.statuses[] | select(.context=="agent/review" or .context=="agent/test") | "\(.context)=\(.state)"] | sort | join(" ")')"
-    [ "$states" = "agent/review=success agent/test=success" ] || continue
-    gh pr view "$pr" --repo "$REPO" --json comments --jq '.comments[].body' | grep -q "Merge decision ready for ${sha:0:7}" && continue
-    gh pr comment "$pr" --repo "$REPO" --body "[dispatcher] Merge decision ready for ${sha:0:7}: \`agent/review\` and \`agent/test\` are both success on the head commit; ticket #$n is \`status:ready-to-merge\`. Waiting for the human merge — agents do not merge." >/dev/null
-    echo "merge decision ready: PR #$pr (#$n) at ${sha:0:7}"
+    gates="$(latest_gates "$sha")"
+    [ "$gates" = "agent/review=success agent/test=success" ] || { echo "PR #$pr not merge-ready at ${sha:0:7}: ${gates:-no gate statuses}"; continue; }
+    # the head must not have moved while we checked
+    [ "$(gh pr view "$pr" --repo "$REPO" --json state,headRefOid --jq '.state + " " + .headRefOid')" = "OPEN $sha" ] || continue
+    gh pr view "$pr" --repo "$REPO" --json comments --jq '.comments[].body' | grep -q "Merge decision ready for $sha" && continue
+    evidence="$(gh api --paginate "repos/$REPO/commits/$sha/statuses?per_page=100" --jq '.[]' \
+      | jq -rs 'group_by(.context) | map(max_by([.created_at, .id])) | .[]
+                | select(.context == "agent/review" or .context == "agent/test")
+                | "- `\(.context)` = **\(.state)** at \(.created_at) (status id \(.id)): \(.description)"')"
+    gh pr comment "$pr" --repo "$REPO" --body "[dispatcher] Merge decision ready for $sha
+
+Newest gate statuses on this exact head commit:
+$evidence
+
+Ticket #$n is \`status:ready-to-merge\`. Waiting for the human merge — agents do not merge." >/dev/null
+    echo "merge decision ready: PR #$pr (#$n) at $sha"
   done
 }
 
@@ -186,19 +243,14 @@ fi
 case "$agent" in manager|reviewer)
   p="$(cat "$LOG/quota/hermes-paused-until" 2>/dev/null || echo 0)"
   [ "$p" -gt "$(date +%s)" ] && { echo "hermes paused for quota until $(date -u -d "@$p" +%FT%TZ)"; exit 0; }
-  # Verify the reset with one tiny request to the agent's primary before starting a long
-  # run; a rejected (429) request does not count against the free quota.
+  # After a pause, resume only when a probe gets a real answer from Gemini.
   if [ "$p" -gt 0 ]; then
-    model="$(hermes -p "$agent" config get model.default)"
-    code="$(set -a; . "$HOME/.secrets/agents.env"; curl -s --max-time 30 -o /dev/null -w '%{http_code}' \
-      -H "x-goog-api-key: $GEMINI_API_KEY_HERMES" -H 'content-type: application/json' \
-      -d '{"contents":[{"parts":[{"text":"OK"}]}],"generationConfig":{"maxOutputTokens":5}}' \
-      "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")"
-    if [ "$code" = "429" ]; then
-      echo $(( $(date +%s) + 3600 )) > "$LOG/quota/hermes-paused-until"
-      echo "quota reset not verified for $model (HTTP 429); paused 1h"; exit 0
+    read -r verdict a b <<<"$(probe_hermes "$agent" | tail -n 1)"
+    if [ "$verdict" != "ok" ]; then
+      echo "$a" > "$LOG/quota/hermes-paused-until"
+      echo "quota reset not verified ($b); paused until $(date -u -d "@$a" +%FT%TZ)"; exit 0
     fi
-    echo "quota reset verified for $model (HTTP $code)"; echo 0 > "$LOG/quota/hermes-paused-until"
+    echo "quota reset verified: $a answered"; echo 0 > "$LOG/quota/hermes-paused-until"
   fi;;
 esac
 echo "== dispatch: $agent ${n:+#$n} ($(date -u +%FT%TZ))"
