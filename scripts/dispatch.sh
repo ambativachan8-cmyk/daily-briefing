@@ -112,11 +112,12 @@ run_openclaw() {
         --message "$msg" --json --timeout 2300 >"$out" 2>"${out%.json}.err"
       set -e
       status="$(jq -r '.status // "error"' "$out" 2>/dev/null || echo error)"
-      text="$(jq -r '.result.payloads[-1].text // .summary // ""' "$out" 2>/dev/null || true)"
+      text="$(jq -r '.result.payloads[-1].text // .summary // ""' "$out" 2>/dev/null || true)
+$(cat "${out%.json}.err" 2>/dev/null)"
       log_jsonl --arg ts "$ts" --arg a "$agent" --arg n "$n" --arg m "$m" --arg s "$status" --arg out "$out" \
         --slurpfile r <(cat "$out" 2>/dev/null || echo '{}') \
         '($r[0].result.meta.agentMeta // {}) as $x | {ts:$ts, agent:$a, framework:"openclaw", issue:$n,
-          status:$s, model:($x.model // $m), provider:$x.provider, assistant_turns:$x.assistantTurns,
+          status:$s, model:$m, provider:$x.provider, assistant_turns:$x.assistantTurns,
           input_tokens:$x.usage.input, output_tokens:$x.usage.output, cache_read_tokens:$x.usage.cacheRead,
           total_tokens:$x.usage.total, actual_cost_usd:($x.costUsd // 0), output:$out}'
       if [ "$status" = "ok" ] && ! grep -qE '\(429\)|RESOURCE_EXHAUSTED|\(503\)|high demand' <<<"$text"; then
