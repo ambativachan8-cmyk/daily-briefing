@@ -37,14 +37,14 @@ route() {
   list="$(issues)"
   [ -z "$list" ] && { echo "manager plan"; return; }
   # 1) review, 2) test, 3) send-backs and interrupted work to builders, 4) ready builder
-  # work, 5) manager triage
+  # work, 5) manager triage. The tester is also a builder for test-suite tickets (role:tester).
   while read -r n labels; do case ",$labels," in *,status:in-review,*) echo "reviewer $n"; return;; esac; done <<<"$list"
   while read -r n labels; do case ",$labels," in *,status:testing,*) echo "tester $n"; return;; esac; done <<<"$list"
   while read -r n labels; do
     case ",$labels," in *,status:changes-requested,*|*,status:in-progress,*)
-      for role in backend ui; do case ",$labels," in *,role:$role,*) echo "$role $n"; return;; esac; done;; esac
+      for role in backend ui tester; do case ",$labels," in *,role:$role,*) echo "$role $n"; return;; esac; done;; esac
   done <<<"$list"
-  for role in backend ui; do
+  for role in backend ui tester; do
     while read -r n labels; do
       case ",$labels," in *,role:$role,*) case ",$labels," in *,status:ready,*)
         deps_closed "$n" && { echo "$role $n"; return; };; esac;; esac
@@ -64,8 +64,15 @@ route() {
   echo "idle"
 }
 
+# The open PR whose body says "Closes #<n>" (exact number, not a substring match).
+pr_for() {
+  gh pr list --repo "$REPO" --state open --limit 100 --json number,body \
+    --jq '[.[] | select(.body | test("(?i)(closes|fixes|resolves) #'"$1"'([^0-9]|$)")) | .number] | first // empty'
+}
+
 prompt_for() {
-  local agent="$1" n="${2:-}"
+  local agent="$1" n="${2:-}" pr=""
+  [ -n "$n" ] && pr="$(pr_for "$n")"
   case "$agent" in
     manager)
       if [ -z "$n" ]; then
@@ -74,11 +81,15 @@ prompt_for() {
         echo "Ticket #$n needs you. Run: gh issue view $n --repo $REPO --comments. Follow your SOUL.md: if it was sent back or is a bug, re-queue it to the right builder with a comment explaining why (or mark blocked after 3 retries); if it is held and its dependencies are merged, release it with status:ready. Then update the Delivery status issue. Finish with one line: TRIAGED #$n <action>."
       fi;;
     reviewer)
-      echo "Issue #$n is in review. Find its PR (gh pr list --repo $REPO --search \"$n in:body\" --state open) and review it exactly as your SOUL.md says, including setting the agent/review commit status. Finish with one line: REVIEWED #$n APPROVED|CHANGES_REQUESTED <PR url>.";;
-    backend|ui)
+      echo "Issue #$n is in review; its PR is #${pr:-?} in $REPO. Review it exactly as your SOUL.md says: inspect the diff, run the tests yourself, post the evidence table, set the agent/review commit status on the PR head, and move the ticket with ticket.sh. Finish with one line: REVIEWED #$n APPROVED|CHANGES_REQUESTED <PR url>.";;
+    backend|ui|tester-build)
       echo "Work ticket #$n. Read AGENTS.md in your workspace and daily-briefing/agents/PROTOCOL.md, then run: gh issue view $n --repo $REPO --comments. If it was sent back, address every numbered point in the latest review/test comment on the same branch and PR. Work inside ./daily-briefing. Finish with one line: DONE #$n <PR url> or BLOCKED #$n <reason>.";;
     tester)
-      echo "Issue #$n is ready for testing. Read AGENTS.md in your workspace and daily-briefing/agents/PROTOCOL.md, find the PR (gh pr list --repo $REPO --search \"$n in:body\" --state open), check out its head in ./daily-briefing, and test it as AGENTS.md says. Finish with one line: TESTED #$n PASS|FAIL <PR url>.";;
+      # status:testing = verify someone else's PR; any other state = the tester's own ticket
+      if [ "$(gh issue view "$n" --repo "$REPO" --json labels --jq '[.labels[].name] | index("status:testing") != null')" != "true" ]; then
+        prompt_for tester-build "$n"; return
+      fi
+      echo "Issue #$n passed review and is ready for testing; its PR is #${pr:-?} in $REPO. Read AGENTS.md in your workspace and daily-briefing/agents/PROTOCOL.md. Independently of the builder and reviewer: check out the PR head in ./daily-briefing, use a fresh virtualenv and a temporary database, run the full test suite and the acceptance scenarios that apply to this ticket, post the exact commands and output, set agent/test on the PR head commit, and move the ticket with ticket.sh. Finish with one line: TESTED #$n PASS|FAIL <PR url>.";;
   esac
 }
 
@@ -158,7 +169,21 @@ if [ "$agent" = "next" ]; then
 fi
 case "$agent" in manager|reviewer)
   p="$(cat "$LOG/quota/hermes-paused-until" 2>/dev/null || echo 0)"
-  [ "$p" -gt "$(date +%s)" ] && { echo "hermes paused for quota until $(date -u -d "@$p" +%FT%TZ)"; exit 0; };;
+  [ "$p" -gt "$(date +%s)" ] && { echo "hermes paused for quota until $(date -u -d "@$p" +%FT%TZ)"; exit 0; }
+  # Verify the reset with one tiny request to the agent's primary before starting a long
+  # run; a rejected (429) request does not count against the free quota.
+  if [ "$p" -gt 0 ]; then
+    model="$(hermes -p "$agent" config get model.default)"
+    code="$(set -a; . "$HOME/.secrets/agents.env"; curl -s --max-time 30 -o /dev/null -w '%{http_code}' \
+      -H "x-goog-api-key: $GEMINI_API_KEY_HERMES" -H 'content-type: application/json' \
+      -d '{"contents":[{"parts":[{"text":"OK"}]}],"generationConfig":{"maxOutputTokens":5}}' \
+      "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent")"
+    if [ "$code" = "429" ]; then
+      echo $(( $(date +%s) + 3600 )) > "$LOG/quota/hermes-paused-until"
+      echo "quota reset not verified for $model (HTTP 429); paused 1h"; exit 0
+    fi
+    echo "quota reset verified for $model (HTTP $code)"; echo 0 > "$LOG/quota/hermes-paused-until"
+  fi;;
 esac
 echo "== dispatch: $agent ${n:+#$n} ($(date -u +%FT%TZ))"
 
