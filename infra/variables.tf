@@ -1,7 +1,7 @@
 variable "region" {
-  description = "AWS region for the single VM."
+  description = "AWS region for the single VM (the account's Free-plan project is pinned to Sydney)."
   type        = string
-  default     = "ap-south-1"
+  default     = "ap-southeast-2"
 }
 
 variable "instance_type" {

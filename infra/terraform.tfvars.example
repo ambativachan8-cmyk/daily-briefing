@@ -1,5 +1,5 @@
 # Copy to terraform.tfvars (git-ignored) and fill in.
-region              = "ap-south-1"
+region              = "ap-southeast-2"
 instance_type       = "m7i-flex.large"
 ssh_public_key_path = "~/.ssh/daily_briefing_ed25519.pub"
 admin_cidr          = "203.0.113.10/32" # your public IP
