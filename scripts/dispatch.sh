@@ -161,7 +161,23 @@ $(cat "${out%.json}.err" 2>/dev/null)"
   echo "all models exhausted for $agent; see $LEDGER"; return 1
 }
 
+# Merge decisions are human. When a ticket is ready-to-merge and both required statuses are
+# success on its PR's current head, post the evidence once per head commit and stop there.
+merge_decisions() {
+  local n pr sha states
+  for n in $(gh issue list --repo "$REPO" --state open --label status:ready-to-merge --json number --jq '.[].number'); do
+    pr="$(pr_for "$n")"; [ -n "$pr" ] || continue
+    sha="$(gh pr view "$pr" --repo "$REPO" --json headRefOid --jq .headRefOid)"
+    states="$(gh api "repos/$REPO/commits/$sha/status" --jq '[.statuses[] | select(.context=="agent/review" or .context=="agent/test") | "\(.context)=\(.state)"] | sort | join(" ")')"
+    [ "$states" = "agent/review=success agent/test=success" ] || continue
+    gh pr view "$pr" --repo "$REPO" --json comments --jq '.comments[].body' | grep -q "Merge decision ready for ${sha:0:7}" && continue
+    gh pr comment "$pr" --repo "$REPO" --body "[dispatcher] Merge decision ready for ${sha:0:7}: \`agent/review\` and \`agent/test\` are both success on the head commit; ticket #$n is \`status:ready-to-merge\`. Waiting for the human merge — agents do not merge." >/dev/null
+    echo "merge decision ready: PR #$pr (#$n) at ${sha:0:7}"
+  done
+}
+
 agent="${1:-next}"; n="${2:-}"
+[ "$agent" = "next" ] && merge_decisions
 if [ "$agent" = "next" ]; then
   read -r agent n <<<"$(route)"
   [ "$agent" = "idle" ] && { echo "idle: nothing actionable"; exit 0; }
