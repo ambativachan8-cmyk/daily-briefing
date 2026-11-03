@@ -1,11 +1,11 @@
 # Delivery report — Daily Briefing (Confer take-home #3)
 
 > **Status: in progress.** This file states only what has been verified; open items are
-> marked _open_. Last updated 2026-11-03.
+> marked _open_. Last updated 2026-11-03 09:20 UTC.
 
 | | |
 |---|---|
-| Live URL | _open — deploys automatically when the first app PR merges_ (`https://13-55-31-171.sslip.io`, fallback `http://13.55.31.171`) |
+| Live URL | https://13-55-31-171.sslip.io (fallback `http://13.55.31.171`) — live since 2026-11-03 09:14 UTC; redeploys on every merge to `main` |
 | Repository | https://github.com/ambativachan8-cmyk/daily-briefing |
 | Ticket trail | [Issues](https://github.com/ambativachan8-cmyk/daily-briefing/issues?q=is%3Aissue) · [Pull requests](https://github.com/ambativachan8-cmyk/daily-briefing/pulls?q=is%3Apr) |
 | Token report | `docs/TOKEN_REPORT.md` (_open — generated from the run log at the end_) |
@@ -57,7 +57,14 @@ operator rows are commits on `main`.
 | 11-02 21:23–21:27 | OpenClaw Backend Builder | Branch `agent/backend/1-scaffold`, commit `4f5e3e0`, opened PR #8 (13 tests) after two Gemini quota failures and a resume on the fallback model |
 | 11-02 21:28 | Hermes Reviewer | Inspected the diff, checked out and ran the tests, set `agent/review=success` |
 | 11-02 21:35 | Operator (`bb328f1`) | Judged that review insufficient (one-line verdict, labels not moved, protocol slip missed); tightened the reviewer prompt and handoff tooling instead of editing labels by hand. #1 stays `in-review` for a second review |
-| _open_ | | Second review, independent test, merge, remaining tickets |
+| 11-03 08:00 | Dispatcher | Quota probe got a real answer from `gemini-3.6-flash`; Hermes resumed |
+| 11-03 08:01 | Hermes Reviewer | Second review of PR #8 at `4f5e3e0`: per-criterion evidence table, ran tests (13 passed), `agent/review=success`, moved #1 to testing |
+| 11-03 08:10–08:14 | OpenClaw Tester | Checked out PR #8 in its own clone, ran the suite (13 passed) plus its own temp-DB acceptance check (A1–A6 at storage level), `agent/test=success`; resumed once after a Gemini quota error |
+| 11-03 08:20 | Dispatcher | Posted merge-decision evidence (newest gate statuses on the exact head) |
+| 11-03 09:13 | Human (Vachan) | Authorized the merge; merged as `9e395c0` with `--match-head-commit 4f5e3e0` after an operator re-run (13 passed) |
+| 11-03 09:14 | Dispatcher | Deployed `9e395c0`; `/health` 200 over HTTPS |
+| 11-03 09:15 | Hermes Manager | Released #2 (dependency merged), updated Delivery status #7 |
+| _open_ | | #2–#6, full acceptance tests on the live app |
 
 ## 4. Honest limitations
 
