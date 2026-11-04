@@ -127,7 +127,10 @@ next_reset() {
 # OpenClaw does not switch models mid-turn once a tool has run (replay safety), so on a
 # quota error we resume the same session on the next model with remaining free quota.
 run_openclaw() {
-  local agent="$1" n="$2" msg="$3" key="agent:$1:issue-${2:-0}" models m ts out status text retried=""
+  # A fresh session per dispatch: resuming after a quota error stays in it, but a later ticket
+  # state starts clean and re-reads GitHub. Replaying a whole earlier session cost 3.3M cache-read
+  # tokens on one rework of #2.
+  local agent="$1" n="$2" msg="$3" key="agent:$1:issue-${2:-0}:$(date -u +%Y%m%dT%H%M%S)" models m ts out status text retried=""
   models="$(openclaw config get "agents.entries.$agent.model" | jq -r '.primary, .fallbacks[]')"
   for m in $models; do
     awk -v m="$m" -v now="$(date +%s)" '$1==m && $2>now {f=1} END {exit !f}' "$LEDGER" && continue
