@@ -132,10 +132,11 @@ next_reset_for() { case "$1" in openrouter/*) date -u -d 'tomorrow 00:00' +%s;; 
 # OpenClaw does not switch models mid-turn once a tool has run (replay safety), so on a
 # quota error we resume the same session on the next model with remaining free quota.
 run_openclaw() {
-  # A fresh session per dispatch: resuming after a quota error stays in it, but a later ticket
-  # state starts clean and re-reads GitHub. Replaying a whole earlier session cost 3.3M cache-read
+  # One session per PR head: work interrupted by quota resumes with its context, and new commits
+  # start clean and re-read GitHub. Replaying a whole earlier session cost 3.3M cache-read
   # tokens on one rework of #2.
-  local agent="$1" n="$2" msg="$3" key="agent:$1:issue-${2:-0}:$(date -u +%Y%m%dT%H%M%S)" models m ts out status text retried=""
+  local head pr; pr="$(pr_for "${2:-0}")"; head="$([ -n "$pr" ] && gh pr view "$pr" --repo "$REPO" --json headRefOid --jq '.headRefOid[0:7]' || echo none)"
+  local agent="$1" n="$2" msg="$3" key="agent:$1:issue-${2:-0}:$head" models m ts out status text retried=""
   models="$(openclaw config get "agents.entries.$agent.model" | jq -r '.primary, .fallbacks[]')"
   for m in $models; do
     awk -v m="$m" -v now="$(date +%s)" '$1==m && $2>now {f=1} END {exit !f}' "$LEDGER" && continue
@@ -157,7 +158,7 @@ $(cat "${out%.json}.err" 2>/dev/null)"
       if [ "$status" = "ok" ] && ! grep -qE '\(429\)|\| 429|RESOURCE_EXHAUSTED|\(503\)|high demand' <<<"$text"; then
         echo "$text" | tail -n 3; return 0
       fi
-      msg="Continue the task from where you stopped (the previous model hit a provider limit). Do not redo steps that already succeeded; check git and GitHub state first."
+      msg="Continue the task from where you stopped (the previous model hit a provider limit). Do not redo steps that already succeeded; check git and GitHub state first. Commit and push finished work now, in case the limit returns."
       if grep -qE '\(429\)|\| 429|RESOURCE_EXHAUSTED' <<<"$text"; then
         if [ -z "$retried" ]; then retried=1; sleep 65; continue; fi   # per-minute window
         # per-day quota: Gemini free tier resets at midnight Pacific (08:00 UTC in winter)
