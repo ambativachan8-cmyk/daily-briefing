@@ -20,7 +20,7 @@ OUT="${2:-$HOME/agents/_src/docs/TOKEN_REPORT.md}"
   echo
   echo "| Agent | Framework | Model | Runs | Model calls | Input tokens | Output tokens | Cache-read | Total | List-price estimate (USD) |"
   echo "|---|---|---|---:|---:|---:|---:|---:|---:|---:|"
-  jq -rs 'group_by([.agent, .model]) | .[] |
+  jq -rs 'map(.model |= sub("^(google|openrouter)/"; "")) | group_by([.agent, .model]) | .[] |
     [ .[0].agent, .[0].framework, (.[0].model // "?"), length,
       (map(.api_calls // .assistant_turns // 0) | add),
       (map(.input_tokens // 0) | add), (map(.output_tokens // 0) | add),
@@ -34,6 +34,29 @@ OUT="${2:-$HOME/agents/_src/docs/TOKEN_REPORT.md}"
   echo "|---|---:|---:|---:|"
   jq -rs 'group_by(.agent) | .[] |
     "| \(.[0].agent) | \(length) | \(map(.total_tokens // 0) | add) | \(map(select((.status // "ok") != "ok" or (.exit // 0) != 0)) | length) |"' "$IN"
+  echo
+  echo "## By phase"
+  echo
+  echo "Each attempt counts once. An agent's first successful run on a ticket goes to its phase"
+  echo "(manager: planning; backend, ui: coding; reviewer, tester: review/test). Every other attempt"
+  echo "(a failed attempt, or a repeat run on the same ticket, such as a re-review or rework after a"
+  echo "send-back) counts as a retry. Fresh tokens exclude cache reads, which the two runtimes report"
+  echo "differently: OpenClaw's input excludes them and Hermes' input includes them."
+  echo
+  echo "| Phase | Attempts | Fresh tokens | Cache-read | Total reported |"
+  echo "|---|---:|---:|---:|---:|"
+  jq -rs 'def ok: (.status // "ok") == "ok" and (.exit // 0) == 0;
+    def fresh: if .framework == "hermes" then ((.input_tokens // 0) - (.cache_read_tokens // 0) + (.output_tokens // 0))
+               else ((.input_tokens // 0) + (.output_tokens // 0)) end;
+    reduce .[] as $r ({seen: {}, rows: []};
+      ($r.agent + "/" + ($r.issue // "")) as $k
+      | (if ($r | ok) and (.seen[$k] | not) then
+           ({manager: "planning", backend: "coding", ui: "coding", reviewer: "review/test", tester: "review/test"}[$r.agent])
+         else "retries" end) as $phase
+      | (if ($r | ok) then .seen[$k] = true else . end)
+      | .rows += [$r + {phase: $phase, fresh: ($r | fresh)}])
+    | .rows | group_by(.phase) | .[] |
+    "| \(.[0].phase) | \(length) | \(map(.fresh) | add) | \(map(.cache_read_tokens // 0) | add) | \(map(.total_tokens // 0) | add) |"' "$IN"
   echo
   echo "## Every run"
   echo
