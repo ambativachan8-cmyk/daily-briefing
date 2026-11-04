@@ -11,5 +11,3 @@ runtimes and the ticket protocol, and reviews/merges. See:
 - [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) — the requirement the agents work from
 - [infra/](infra/) — Terraform for the single VM
 - [DELIVERY.md](DELIVERY.md) — delivery report (kept current as tickets land)
-
-Status: agent team running; first ticket in review. See DELIVERY.md.
