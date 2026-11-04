@@ -1,94 +1,153 @@
 # Delivery report — Daily Briefing (Confer take-home #3)
 
 > **Status: in progress.** This file states only what has been verified; open items are
-> marked _open_. Last updated 2026-11-03 09:20 UTC.
+> marked _open_. Last updated 2026-11-04 22:55 UTC.
 
 | | |
 |---|---|
-| Live URL | https://13-55-31-171.sslip.io (fallback `http://13.55.31.171`) — live since 2026-11-03 09:14 UTC; redeploys on every merge to `main` |
+| Live URL | https://13-55-31-171.sslip.io (fallback `http://13.55.31.171`). Redeploys on every merge to `main`. _Open: the page ships with #3; today it serves only the JSON scaffold._ |
 | Repository | https://github.com/ambativachan8-cmyk/daily-briefing |
 | Ticket trail | [Issues](https://github.com/ambativachan8-cmyk/daily-briefing/issues?q=is%3Aissue) · [Pull requests](https://github.com/ambativachan8-cmyk/daily-briefing/pulls?q=is%3Apr) |
-| Token report | `docs/TOKEN_REPORT.md` (_open — generated from the run log at the end_) |
-| Spend | $0 on model APIs; VM on AWS Free-plan credits (~$3.10/day) |
+| Token report | [docs/TOKEN_REPORT.md](docs/TOKEN_REPORT.md) (_open: regenerated from the run log at the end_) |
+| Traces | [docs/TRACES.md](docs/TRACES.md) |
+| Spend | $0 on model APIs. VM on AWS Free-plan credits (about $3.10/day) |
 
-## 1. Who did what
+## 1. The team
 
-**Agents (all product code, tickets, reviews, tests).** Five agents on two frameworks, each
-with its own workspace, its own git clone and git author, and a pre-push hook that blocks
-`main`:
+| Agent | Runtime | Role | Model (primary, then fallbacks) | Tools |
+|---|---|---|---|---|
+| Hermes Manager | Hermes Agent v0.22.5, profile `manager` | Orchestrator: writes tickets, releases dependencies, re-queues send-backs | `gemini-3.5-flash`, then other Gemini free models, then OpenRouter Nemotron `:free` | `terminal`, `file`, `todo`; `gh`, `git` |
+| OpenClaw Backend Builder | OpenClaw 2026.10.9, agent `backend` | Ingestion, storage, dedup, scheduler | `google/gemini-3.5-flash`, then others | `coding` profile; `gh`, `git` |
+| OpenClaw UI Builder | OpenClaw 2026.10.9, agent `ui` | Public page, history, Run now | `google/gemini-3-flash-preview`, then others | `coding` profile; `gh`, `git` |
+| Hermes Reviewer | Hermes Agent v0.22.5, profile `reviewer` | Reviews each PR against ticket and brief; sets required status `agent/review` | `gemini-3.6-flash`, then others | `terminal`, `file`, `todo`; `gh`, `git` |
+| OpenClaw Tester | OpenClaw 2026.10.9, agent `tester` | Independent tests; sets required status `agent/test`; owns the acceptance suite | `google/gemini-3.6-flash`, then others | `coding` profile; `gh`, `git` |
 
-| Agent | Framework | Role |
-|---|---|---|
-| Hermes Manager | Hermes Agent v0.22.5 (profile `manager`) | Turns the brief into tickets, releases dependencies, re-queues send-backs |
-| OpenClaw Backend Builder | OpenClaw 2026.10.9 (agent `backend`) | Ingestion, storage, dedup, scheduler |
-| OpenClaw UI Builder | OpenClaw 2026.10.9 (agent `ui`) | Public page, history, Run-now |
-| Hermes Reviewer | Hermes Agent v0.22.5 (profile `reviewer`) | Code review; sets the required `agent/review` status |
-| OpenClaw Tester | OpenClaw 2026.10.9 (agent `tester`) | Independent tests; sets the required `agent/test` status; owns the acceptance suite |
+Full chains and how each was verified: [agents/README.md](agents/README.md). Configs and prompts:
+[agents/](agents/). The team has five agents because the suggested ops-builder role is covered by
+scripts in `scripts/`, which need no model.
 
-Models per agent and how each was verified: [agents/README.md](agents/README.md).
+**Model choice, honestly.** The brief asks for strong models on planning and review and cheaper ones
+on routine work. Every model we can reach is a free-tier flash-class model, so the real difference
+between roles is small. Primaries are spread across models because Gemini's free quota is per model,
+per project. The team's own record shows the limit of this: see section 5.
 
 **Human side (Vachan, with Claude Code as operator).** Terraform VM, runtime installs, agent
-identities, role prompts and ticket protocol, model wiring, the deterministic dispatcher,
-deployment, supervision, merges, and this report. No product code was written on the human
-side; every file under `app/` and `tests/` comes from an agent-authored commit (check with
-`git log --format='%an' -- app tests | sort | uniq -c`).
+identities, role prompts, ticket protocol, model wiring, the dispatcher, deployment, supervision,
+review findings, merges and this report. No product code was written on the human side: check with
+`git log --format='%an' -- app tests | sort | uniq -c`.
 
-## 2. How work flows
+## 2. How a ticket moves
 
-1. `scripts/dispatch.sh next` (systemd timer, every 10 min) reads issue labels and picks
-   exactly one agent: review → test → send-backs → ready work → manager triage. Routing is
-   plain label matching; no model decides who works next. One agent runs at a time (`flock`).
-2. Agents act only through `git` and `gh`: branches `agent/<role>/<issue>-<slug>`,
-   `Refs #n` commits, PRs with `Closes #n`, label transitions via `scripts/ticket.sh`.
-3. **Merge gate.** Branch protection on `main` requires commit statuses `agent/review` and
-   `agent/test` = success. A human merges only after both pass.
-4. Merged `main` is redeployed automatically (`scripts/deploy_app.sh --if-changed`).
+```mermaid
+flowchart TD
+  B[Product brief] --> M[Hermes Manager writes ticket]
+  M --> R{Dependencies merged?}
+  R -- no --> H[Held, no status label]
+  H --> R
+  R -- yes --> BD[OpenClaw builder: branch, commits, PR]
+  BD --> RV[Hermes Reviewer]
+  RV -- reject: agent/review=failure --> M2[Manager re-queues with reason]
+  M2 --> BD
+  RV -- approve: agent/review=success --> T[OpenClaw Tester, clean clone]
+  T -- fail: agent/test=failure, bug ticket --> M2
+  T -- pass: agent/test=success --> D[Dispatcher posts merge evidence for the exact head]
+  D --> HM[Human checks and merges]
+  HM -- rejects --> M2
+  HM -- merge --> CD[main auto-deploys to the VM]
+```
+
+- `scripts/dispatch.sh next` runs every 10 minutes from a systemd timer and picks one agent by plain
+  label matching: no model decides who works next. One agent runs at a time (`flock`).
+- Agents act only through `git` and `gh`. Each has its own clone and git author, and a pre-push hook
+  blocks `main`. Labels move through `scripts/ticket.sh`.
+- Branch protection on `main` requires `agent/review` and `agent/test` on the head commit, so a new
+  commit needs both gates again.
 
 Full protocol: [agents/PROTOCOL.md](agents/PROTOCOL.md).
 
-## 3. Trail so far
+## 3. What each agent actually did
 
-Agent rows are visible on GitHub (issues, PR #8, commit statuses) and in the run log;
-operator rows are commits on `main`.
+_Open: table finalised when the remaining tickets land._
 
-| When (UTC) | Agent | Event |
-|---|---|---|
-| 11-02 21:21 | Hermes Manager | Planned the brief into #1–#6 and the Delivery status issue #7; released only #1 |
-| 11-02 21:23–21:27 | OpenClaw Backend Builder | Branch `agent/backend/1-scaffold`, commit `4f5e3e0`, opened PR #8 (13 tests) after two Gemini quota failures and a resume on the fallback model |
-| 11-02 21:28 | Hermes Reviewer | Inspected the diff, checked out and ran the tests, set `agent/review=success` |
-| 11-02 21:35 | Operator (`bb328f1`) | Judged that review insufficient (one-line verdict, labels not moved, protocol slip missed); tightened the reviewer prompt and handoff tooling instead of editing labels by hand. #1 stays `in-review` for a second review |
-| 11-03 08:00 | Dispatcher | Quota probe got a real answer from `gemini-3.6-flash`; Hermes resumed |
-| 11-03 08:01 | Hermes Reviewer | Second review of PR #8 at `4f5e3e0`: per-criterion evidence table, ran tests (13 passed), `agent/review=success`, moved #1 to testing |
-| 11-03 08:10–08:14 | OpenClaw Tester | Checked out PR #8 in its own clone, ran the suite (13 passed) plus its own temp-DB acceptance check (A1–A6 at storage level), `agent/test=success`; resumed once after a Gemini quota error |
-| 11-03 08:20 | Dispatcher | Posted merge-decision evidence (newest gate statuses on the exact head) |
-| 11-03 09:13 | Human (Vachan) | Authorized the merge; merged as `9e395c0` with `--match-head-commit 4f5e3e0` after an operator re-run (13 passed) |
-| 11-03 09:14 | Dispatcher | Deployed `9e395c0`; `/health` 200 over HTTPS |
-| 11-03 09:15 | Hermes Manager | Released #2 (dependency merged), updated Delivery status #7 |
-| _open_ | | #2–#6, full acceptance tests on the live app |
+| Agent | Done so far |
+|---|---|
+| Hermes Manager | Split the brief into #1–#6 plus status issue #7. Released #2 after #1 merged. Re-queued #2 after the reviewer's rejection, rewrote its criteria to carry the brief's requirements, and corrected the dependencies of #5 and #6. |
+| OpenClaw Backend Builder | #1 scaffold (PR #8, merged). #2 feed and ingest (PR #9): reworked three times. |
+| Hermes Reviewer | Approved #1 after two reviews. Rejected PR #9 at `ea55954` after its prompt was hardened. Wrongly approved `28750bf` on a flash-lite model. |
+| OpenClaw Tester | Tested #1. Passed `ea55954` with a count inflated by a stray local file. |
+| OpenClaw UI Builder | _Open: #3._ |
 
-## 4. Honest limitations
+## 4. What broke, and how it was caught
 
-- **One GitHub account.** All agents share one repo-scoped token, so GitHub shows every
-  comment and PR under the owner's account. Authorship is carried by per-agent git authors
-  and the signature tag that starts each comment. GitHub therefore refuses formal
-  "approve" reviews (self-approval); the gate is the two required commit statuses.
-- **Gate strength.** `enforce_admins` is off so the human can merge; the gate is protocol +
-  per-clone pre-push hooks + branch protection, not cryptographic separation.
-- **Free-tier capacity.** Gemini free tier is 20 requests/day and 5/min per model per
-  project; OpenRouter free is 50/day. This, not engineering time, sets the pace; the
-  dispatcher pauses until the reset (08:00 UTC) instead of retrying.
-- **AWS instead of the brief's first choice**: the Free-plan account is locked to
-  `ap-southeast-2`; Terraform targets that region.
+**The gates passed bad work, twice, and the human review caught it.** This is the most useful thing
+this delivery showed.
 
-## 5. Reproduce
+PR #9 went through reviewer and tester with green statuses and 31 passing tests. Before merging, the
+operator ran independent probes:
+
+- Item title and link were never stored, so no page could show them after a restart.
+- `POST /ingest` accepted 10 of 10 rapid calls.
+- Two parallel runs both reported the same three items as new.
+- The feed never changed.
+- The tester's "31 passed" came from an uncommitted `tests/test_acceptance.py` left in its clone by
+  the previous ticket. A clean checkout had 30.
+
+The root cause was in our setup. Review was judged only against the ticket, and the manager's ticket
+had dropped a brief requirement, so both gates could pass code that missed the brief.
+
+**The fix, and a blind check of it.** The reviewer's prompt was changed to trace each PR to the brief
+and run its own probes. It then re-reviewed the same commit without being told the findings, and
+rejected it on its own for the storage defect. It did not find the others. The manager re-queued the
+ticket and corrected it.
+
+**Then it happened again.** The builder's reply said every point was fixed, and at `0dfea2a` several
+were not; a "non-public" fail switch was a public route. At `28750bf` a reviewer run on the weakest
+model approved in about a minute with the required regression tests missing. The operator overrode
+that approval and the reviewer's prompt now demands a row, a file:line and a named test for each open
+finding. _Open: final outcome of #2._
+
+**The dispatcher misread quota.** It treated a second 429 as daily exhaustion, so a model with quota
+left was written off until the next reset. A probe that answered 200 exposed it. A related bug paused
+Hermes until 08:00 UTC when OpenRouter reset at 00:00. Both are fixed and logged in `git log`. Separately,
+an operator restart of the OpenClaw gateway made two builder attempts fail before it was ready.
+
+## 5. What we would change
+
+- **A stronger reviewer model.** Flash-lite approved work that a flash model rejected. A gate is only
+  as good as the model behind it. Hold reviews until a stronger model has quota, rather than letting
+  fallback silently lower the bar.
+- **Separate GitHub identities per agent** so GitHub's own review approval could be the gate.
+- **Treat a builder's "fixed" as a claim.** Have the dispatcher require a named failing-then-passing
+  test before a send-back can return to review.
+- **Fewer tickets from the start.** One linear dependency chain meant each human merge stalled the
+  whole team. #4 was folded into #3 and #5 was unchained from it to fix this.
+
+## 6. Honest limitations
+
+- **One GitHub account.** All agents share one repo-scoped token, so GitHub shows every comment and PR
+  under the owner's account. Authorship is carried by per-agent git authors and the signature tag on
+  each comment. GitHub refuses formal "approve" reviews (self-approval), so the gate is two required
+  commit statuses.
+- **Gate strength.** `enforce_admins` is off so the human can merge, and operator changes to scripts
+  and prompts went straight to `main`. No operator commit touches `app/` or `tests/`. The gate is
+  protocol, per-clone hooks and branch protection, not cryptographic separation.
+- **Human findings guided the rework.** The review findings on #2 came from the operator as well as
+  the reviewer. They state outcomes and reproductions; the code is the builder's.
+- **Free-tier capacity** sets the pace: 20 requests/day and 5/min per Gemini model per project, 50/day
+  on OpenRouter.
+- **AWS instead of Oracle.** The brief's plan B: the AWS Free-plan account is locked to `ap-southeast-2`,
+  and Terraform targets that region.
+
+## 7. Reproduce
 
 ```bash
 cd infra && cp terraform.tfvars.example terraform.tfvars   # set admin_cidr, key path
 terraform init && terraform apply
-ssh ubuntu@<ip> 'bash -s' < scripts/vm_bootstrap.sh      # OpenClaw + Hermes
-# copy agents.env (see agents/agents.env.example) to ~/.secrets/agents.env on the VM
+scp agents/agents.env.example ubuntu@<ip>:~/.secrets/agents.env   # then fill in free-tier keys
 ssh ubuntu@<ip> 'git clone https://github.com/ambativachan8-cmyk/daily-briefing ~/agents/_src &&
-  bash ~/agents/_src/scripts/setup_agents.sh && bash ~/agents/_src/scripts/configure_models.sh &&
-  bash ~/agents/_src/scripts/install_dispatch_timer.sh'
+  bash ~/agents/_src/scripts/install_all.sh'
 ```
+
 Agent dashboards stay on loopback; reach them with the tunnel from `terraform output`.
+_Open: `install_all.sh` has passed a syntax check but has not been run on a fresh VM; each script it
+calls was run during setup._
