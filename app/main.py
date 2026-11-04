@@ -8,7 +8,7 @@ from time import time
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.db import cleanup_stale_runs, get_items_by_run, get_runs, get_run, init_db, set_config
+from app.db import cleanup_stale_runs, get_items_by_run, get_runs, get_run, init_db
 from app.feed import _check_feed_fail_config, fetch_feed, get_feed_items, ingest_feed
 
 # Simple in-memory rate limiter for /ingest endpoint
@@ -19,11 +19,9 @@ INGEST_RATE_LIMIT_SECONDS = 5  # Minimum 5 seconds between runs
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
-    # Startup
     init_db()
     cleanup_stale_runs()
     yield
-    # Shutdown (if needed)
 
 
 app = FastAPI(
@@ -86,7 +84,6 @@ async def feed_endpoint():
 async def ingest_endpoint(request: Request):
     """
     Trigger a feed ingestion run.
-    Fetches the feed, determines new items, stores them, and records the run.
     Rate limited to prevent abuse.
     """
     client_ip = request.client.host if request.client else "unknown"
@@ -101,6 +98,9 @@ async def ingest_endpoint(request: Request):
         )
 
     result = await ingest_feed()
+    if result["status"] == "failed" and "Another ingestion is already running" in str(result.get("error", "")):
+        return JSONResponse(status_code=409, content=result)
+
     return JSONResponse(content=result)
 
 
@@ -133,13 +133,3 @@ async def run_detail_endpoint(run_id: int):
         "run": dict(run),
         "items": [dict(item) for item in items],
     }
-
-
-@app.post("/admin/feed/fail-next")
-async def fail_next_run_endpoint():
-    """
-    Admin endpoint to make the next feed fetch fail.
-    This is a non-public way to simulate feed failures for testing.
-    """
-    set_config("fail_next_run", "true")
-    return {"message": "Next feed fetch will fail", "config": "fail_next_run=true"}

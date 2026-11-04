@@ -98,9 +98,9 @@ def test_insert_items(temp_db):
     run_id = create_run("2026-01-01T12:00:00Z", "success")
 
     items = [
-        ("item-1", "feed-1", run_id),
-        ("item-2", "feed-1", run_id),
-        ("item-3", "feed-2", run_id),
+        ("item-1", "feed-1", "Title 1", "https://example.com/1", "Description 1", run_id),
+        ("item-2", "feed-1", "Title 2", "https://example.com/2", "Description 2", run_id),
+        ("item-3", "feed-2", "Title 3", "https://example.com/3", "Description 3", run_id),
     ]
     count = insert_items(items)
 
@@ -114,7 +114,7 @@ def test_insert_items_ignore_duplicates(temp_db):
     """Test that duplicate items are ignored."""
     run_id = create_run("2026-01-01T12:00:00Z", "success")
 
-    items = [("item-1", "feed-1", run_id)]
+    items = [("item-1", "feed-1", "Title 1", "https://example.com/1", "Description 1", run_id)]
     insert_items(items)
     count = insert_items(items)  # Insert same items again
 
@@ -127,14 +127,18 @@ def test_get_items_by_run(temp_db):
     run_id = create_run("2026-01-01T12:00:00Z", "success")
 
     items = [
-        ("item-1", "feed-1", run_id),
-        ("item-2", "feed-1", run_id),
+        ("item-1", "feed-1", "Title 1", "https://example.com/1", "Description 1", run_id),
+        ("item-2", "feed-1", "Title 2", "https://example.com/2", "Description 2", run_id),
     ]
     insert_items(items)
 
     run_items = get_items_by_run(run_id)
     assert len(run_items) == 2
     assert {row["id"] for row in run_items} == {"item-1", "item-2"}
+    # Verify new fields are stored
+    assert run_items[0]["title"] == "Title 1"
+    assert run_items[0]["link"] == "https://example.com/1"
+    assert run_items[0]["description"] == "Description 1"
 
 
 def test_get_all_item_ids(temp_db):
@@ -142,8 +146,8 @@ def test_get_all_item_ids(temp_db):
     run_id = create_run("2026-01-01T12:00:00Z", "success")
 
     items = [
-        ("item-1", "feed-1", run_id),
-        ("item-2", "feed-1", run_id),
+        ("item-1", "feed-1", "Title 1", "https://example.com/1", "Description 1", run_id),
+        ("item-2", "feed-1", "Title 2", "https://example.com/2", "Description 2", run_id),
     ]
     insert_items(items)
 
@@ -154,7 +158,7 @@ def test_get_all_item_ids(temp_db):
 def test_item_exists(temp_db):
     """Test checking if an item exists."""
     run_id = create_run("2026-01-01T12:00:00Z", "success")
-    insert_items([("item-1", "feed-1", run_id)])
+    insert_items([("item-1", "feed-1", "Title 1", "https://example.com/1", "Description 1", run_id)])
 
     assert item_exists("item-1")
     assert not item_exists("item-2")

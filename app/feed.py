@@ -4,7 +4,6 @@ Synthetic feed generation and ingestion logic.
 import hashlib
 import json
 import os
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
 
@@ -15,12 +14,16 @@ from app.db import (
     get_all_item_ids,
     get_config,
     insert_items,
+    insert_run_items,
     set_config,
     update_run_status,
 )
 
-# Default feed items for the synthetic feed - these will be the base items
-# The feed can "gain items over time" by adding new items with new stable IDs
+# Start date for the dynamic feed (default to now if not set, so fresh setups start at 3 items)
+FEED_START_DATE = datetime.fromisoformat(
+    os.environ.get("FEED_START_DATE", datetime.now(timezone.utc).isoformat())
+)
+
 DEFAULT_FEED_ITEMS = [
     {
         "id": "item-1",
@@ -58,62 +61,74 @@ def get_feed_items() -> list[dict[str, Any]]:
     """
     Get the synthetic feed items.
     Can be overridden via FEED_ITEMS_JSON environment variable for testing.
-    Falls back to default items on JSON decode error.
+    Otherwise dynamic based on time from FEED_START_DATE.
     """
     feed_json = os.environ.get("FEED_ITEMS_JSON")
     if feed_json:
         try:
             return json.loads(feed_json)
         except json.JSONDecodeError:
-            # Invalid JSON - will be handled as error in fetch_feed
             raise ValueError("Invalid FEED_ITEMS_JSON environment variable")
-    return DEFAULT_FEED_ITEMS
+
+    now = datetime.now(timezone.utc)
+    days_elapsed = max(0, (now - FEED_START_DATE).days)
+    num_items = 3 + (days_elapsed // 2)
+
+    items = []
+    for i in range(num_items):
+        item_id = f"item-{i+1}"
+        items.append({
+            "id": item_id,
+            "title": f"Item {i+1} title",
+            "link": f"https://example.com/item-{i+1}",
+            "description": f"Description for item {i+1}",
+        })
+    return items
 
 
-def _check_feed_fail_config() -> bool:
-    """
-    Check if the feed should fail (for testing) without consuming the config.
-    Checks database config first, then environment variable.
-    """
-    # Check database config (non-public way to control feed failure)
-    db_fail = get_config("fail_next_run")
+def _check_feed_fail_config(conn=None) -> bool:
+    """Check if the feed should fail (for testing) without consuming the config."""
+    if conn is not None:
+        try:
+            row = conn.execute("SELECT value FROM config WHERE key = 'fail_next_run'").fetchone()
+            db_fail = row["value"] if row else None
+        except Exception:
+            db_fail = None
+    else:
+        db_fail = get_config("fail_next_run")
     if db_fail and db_fail.lower() == "true":
         return True
-    # Fallback to environment variable
     return os.environ.get("FEED_FAIL", "false").lower() == "true"
 
 
-def _consume_feed_fail_config() -> bool:
-    """
-    Check and consume the feed fail config.
-    Returns True if the feed should fail this one time.
-    """
-    # Check database config (non-public way to control feed failure)
-    db_fail = get_config("fail_next_run")
-    if db_fail and db_fail.lower() == "true":
-        # Consume the config so it only fails once
-        set_config("fail_next_run", "false")
-        return True
-    # Fallback to environment variable (not consumed, for testing)
+def _consume_feed_fail_config(conn=None) -> bool:
+    """Check and consume the feed fail config."""
+    if conn is not None:
+        try:
+            row = conn.execute("SELECT value FROM config WHERE key = 'fail_next_run'").fetchone()
+            db_fail = row["value"] if row else None
+            if db_fail and db_fail.lower() == "true":
+                conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('fail_next_run', 'false')")
+                return True
+        except Exception:
+            pass
+    else:
+        db_fail = get_config("fail_next_run")
+        if db_fail and db_fail.lower() == "true":
+            set_config("fail_next_run", "false")
+            return True
     return os.environ.get("FEED_FAIL", "false").lower() == "true"
 
 
-async def fetch_feed(consume_config: bool = False) -> tuple[list[dict[str, Any]], str | None]:
+async def fetch_feed(consume_config: bool = False, conn=None) -> tuple[list[dict[str, Any]], str | None]:
     """
     Fetch the synthetic feed.
     Returns (items, error_message).
-    If error_message is not None, the fetch failed.
-    
-    Args:
-        consume_config: If True, consume the fail_next_run config (for ingestion).
-                       If False, just check without consuming (for /feed endpoint).
     """
-    should_fail = _consume_feed_fail_config() if consume_config else _check_feed_fail_config()
+    should_fail = _consume_feed_fail_config(conn=conn) if consume_config else _check_feed_fail_config(conn=conn)
     if should_fail:
         return [], "Feed configured to fail (fail_next_run=true)"
 
-    # In a real implementation, this would fetch from an external URL.
-    # For the synthetic feed, we return the configured items directly.
     try:
         items = get_feed_items()
         return items, None
@@ -123,16 +138,10 @@ async def fetch_feed(consume_config: bool = False) -> tuple[list[dict[str, Any]]
 
 async def ingest_feed() -> dict[str, Any]:
     """
-    Ingest the feed: fetch, compare with stored items, store new items and run.
-    Returns a summary of the run.
-    Uses a lock to prevent overlapping runs across threads and processes.
+    Ingest the feed: fetch, compare with stored items, store new items and run atomically.
     """
-    # Clean up any stale runs from previous crashes
-    cleanup_stale_runs()
-
     timestamp = datetime.now(timezone.utc).isoformat()
 
-    # Acquire lock to prevent overlapping runs
     with acquire_lock("ingestion") as acquired:
         if not acquired:
             return {
@@ -145,75 +154,79 @@ async def ingest_feed() -> dict[str, Any]:
                 "is_first_run": False,
             }
 
-        # Create a run record (initially "running")
-        run_id = create_run(timestamp, "running")
+        from app.db import get_conn
+        with get_conn() as conn:
+            run_id = create_run(timestamp, "running", conn=conn)
 
-        try:
-            # Fetch the feed (consume config if set)
-            feed_items, error = await fetch_feed(consume_config=True)
+            try:
+                feed_items, error = await fetch_feed(consume_config=True, conn=conn)
 
-            if error:
-                # Feed fetch failed
-                update_run_status(run_id, "failed", error, new_items_count=0, is_first_run=False)
+                if error:
+                    update_run_status(run_id, "failed", error, new_items_count=0, is_first_run=False, conn=conn)
+                    conn.commit()
+                    return {
+                        "run_id": run_id,
+                        "timestamp": timestamp,
+                        "status": "failed",
+                        "error": error,
+                        "new_items_count": 0,
+                        "new_items": [],
+                        "is_first_run": False,
+                    }
+
+                known_ids = get_all_item_ids()
+                is_first_run = len(known_ids) == 0
+
+                new_items = []
+                all_items_in_run = []
+                for item in feed_items:
+                    item_id = generate_item_id(item)
+                    all_items_in_run.append((
+                        run_id,
+                        item_id,
+                        item.get("title", ""),
+                        item.get("link", ""),
+                        item.get("description", "")
+                    ))
+                    if item_id not in known_ids:
+                        new_items.append(
+                            (
+                                item_id,
+                                item.get("id", item_id),
+                                item.get("title", ""),
+                                item.get("link", ""),
+                                item.get("description", ""),
+                                run_id,
+                            )
+                        )
+                        known_ids.add(item_id)
+
+                if new_items:
+                    insert_items(new_items, conn=conn)
+                insert_run_items(all_items_in_run, conn=conn)
+
+                update_run_status(run_id, "success", None, new_items_count=len(new_items), is_first_run=is_first_run, conn=conn)
+                conn.commit()
+
+                return {
+                    "run_id": run_id,
+                    "timestamp": timestamp,
+                    "status": "success",
+                    "error": None,
+                    "new_items_count": len(new_items),
+                    "new_items": [{"id": i[0], "title": i[2], "link": i[3], "description": i[4]} for i in new_items],
+                    "is_first_run": is_first_run,
+                }
+
+            except Exception as e:
+                update_run_status(run_id, "failed", str(e), new_items_count=0, is_first_run=False, conn=conn)
+                conn.commit()
                 return {
                     "run_id": run_id,
                     "timestamp": timestamp,
                     "status": "failed",
-                    "error": error,
+                    "error": str(e),
                     "new_items_count": 0,
                     "new_items": [],
                     "is_first_run": False,
                 }
-
-            # Get all known item IDs
-            known_ids = get_all_item_ids()
-            is_first_run = len(known_ids) == 0
-
-            # Determine new items (deterministic dedup by stable ID)
-            new_items = []
-            for item in feed_items:
-                item_id = generate_item_id(item)
-                if item_id not in known_ids:
-                    new_items.append(
-                        {
-                            "id": item_id,
-                            "feed_id": item.get("id", item_id),
-                            "title": item.get("title", ""),
-                            "link": item.get("link", ""),
-                            "description": item.get("description", ""),
-                        }
-                    )
-                    known_ids.add(item_id)  # Track for this run
-
-            # Store new items AND update run status atomically (in same transaction)
-            if new_items:
-                items_to_insert = [
-                    (item["id"], item["feed_id"], run_id) for item in new_items
-                ]
-                insert_items(items_to_insert)
-
-            # Update run status to success with details
-            update_run_status(run_id, "success", None, new_items_count=len(new_items), is_first_run=is_first_run)
-
-            return {
-                "run_id": run_id,
-                "timestamp": timestamp,
-                "status": "success",
-                "error": None,
-                "new_items_count": len(new_items),
-                "new_items": new_items,
-                "is_first_run": is_first_run,
-            }
-
-        except Exception as e:
-            # Unexpected error during ingestion
-            update_run_status(run_id, "failed", str(e), new_items_count=0, is_first_run=False)
-            return {
-                "run_id": run_id,
-                "timestamp": timestamp,
-                "status": "failed",
-                "error": str(e),
-                "new_items_count": 0,
-                "new_items": [],
-                "is_first_run": False,
-            }
