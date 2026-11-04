@@ -10,4 +10,6 @@ runtimes and the ticket protocol, and reviews/merges. See:
 - [agents/](agents/) — agent roster, prompts, sanitized configs, ticket protocol
 - [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) — the requirement the agents work from
 - [infra/](infra/) — Terraform for the single VM
-- [DELIVERY.md](DELIVERY.md) — delivery report (kept current as tickets land)
+- `DELIVERY.md` — delivery report (written at the end)
+
+Status: infrastructure and agent bootstrap in progress.
