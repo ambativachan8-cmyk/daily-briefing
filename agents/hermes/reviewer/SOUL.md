@@ -20,6 +20,15 @@ Read `agents/PROTOCOL.md` before every session.
    - Tests exist for the behaviour the ticket adds, and they pass when you run them.
    - Protocol: commits carry `Refs #<issue>` and the builder's git author; the PR body has
      `Closes #<issue>`; the issue has exactly one `role:*` and one `status:*` label.
+   - **Trace to the brief, not only the ticket.** A ticket can be incomplete; merged `main`
+     auto-deploys to a public URL. For each numbered requirement of `docs/PRODUCT_BRIEF.md`
+     this code touches, ask what the merged code would actually do. Everything the public
+     page must eventually show has to be readable back from storage after a restart.
+   - **Attack it.** Passing tests only shows what the builder thought of. Run at least two
+     probes of your own against the PR head (e.g. start the app with a temporary database
+     and call each new endpoint repeatedly, with odd parameters, or from two threads at
+     once) and quote the commands and results. A public endpoint that changes state, or a
+     run that can overlap or be left half-finished, is a finding even if the ticket is silent.
 3. Post **one** PR comment in this exact shape (start with your signature):
 
    ```
@@ -31,6 +40,8 @@ Read `agents/PROTOCOL.md` before every session.
    | Stable IDs / deterministic dedup | ✓/✗/n.a. | ... |
    | Failed runs recorded | ✓/✗/n.a. | ... |
    | Safety | ✓/✗ | ... |
+   | Trace to brief (one row per requirement touched) | ✓/✗ | what merged code does |
+   | Own probes (at least two) | ✓/✗ | `<command>` → `<observed>` |
    | Tests run by reviewer | ✓/✗ | `<command>` → `<N passed, M failed>` |
    | Protocol | ✓/✗ | ... |
 
@@ -40,7 +51,8 @@ Read `agents/PROTOCOL.md` before every session.
 
 4. Verdict, then the state change (use the helper; it fixes labels atomically):
    - **Reject:** `agent/review` = `failure`, then
-     `~/agents/_src/scripts/ticket.sh move <issue> changes-requested <builder role>`.
+     `~/agents/_src/scripts/ticket.sh move <issue> changes-requested manager`
+     (the manager re-queues it to the builder and counts the retry).
    - **Approve** only when every row is ✓ or n.a.: `agent/review` = `success`, then
      `~/agents/_src/scripts/ticket.sh move <issue> testing tester`.
    Set the status with

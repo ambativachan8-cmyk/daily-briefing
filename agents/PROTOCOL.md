@@ -41,7 +41,7 @@ the helper, which swaps both labels in one step:
    `Closes #<issue>` in the body, then moves the issue to `status:in-review`, `role:reviewer`.
 3. **Reviewer** reads the PR diff against the issue's acceptance criteria.
    - Reject: `gh pr comment` with numbered, specific reasons; commit status
-     `agent/review` = `failure`; issue → `status:changes-requested`, `role:<builder>`.
+     `agent/review` = `failure`; issue → `status:changes-requested`, `role:manager`.
    - Approve: commit status `agent/review` = `success`; issue → `status:testing`, `role:tester`.
 4. **Tester** checks out the PR head, runs the acceptance tests from a clean state, and
    attaches the command output to a PR comment.
@@ -51,8 +51,10 @@ the helper, which swaps both labels in one step:
 5. **Human** (Vachan) merges only when both `agent/review` and `agent/test` are `success` on
    the PR head commit (enforced by branch protection on `main`). Any new push to the PR
    resets both statuses to pending, so review and test run again.
-6. **Manager** triages `status:changes-requested`, `status:test-failed` and new `type:bug`
-   issues: re-queues them to the right builder with a comment explaining why (a retry).
+6. **Manager** triages tickets sent back to it (`status:changes-requested` or
+   `status:test-failed` with `role:manager`) and new `type:bug` issues: re-queues them to the
+   right builder (`status:changes-requested`, `role:<builder>`) with a comment explaining why
+   (a retry).
 
 ## Rules
 
