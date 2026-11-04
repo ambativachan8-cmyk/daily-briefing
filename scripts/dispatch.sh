@@ -73,6 +73,7 @@ pr_for() {
 prompt_for() {
   local agent="$1" n="${2:-}" pr=""
   [ -n "$n" ] && pr="$(pr_for "$n")"
+  local head=""; [ -n "$pr" ] && head="$(gh pr view "$pr" --repo "$REPO" --json headRefOid --jq .headRefOid)"
   case "$agent" in
     manager)
       if [ -z "$n" ]; then
@@ -81,7 +82,7 @@ prompt_for() {
         echo "Ticket #$n needs you. Run: gh issue view $n --repo $REPO --comments${pr:+ and gh pr view $pr --repo $REPO --comments (the review and test verdicts are on the PR)}. Follow your SOUL.md: if it was sent back or is a bug, re-queue it to the right builder with a comment explaining why (or mark blocked after 3 retries); if it is held and its dependencies are merged, release it with status:ready. Then update the Delivery status issue. Finish with one line: TRIAGED #$n <action>."
       fi;;
     reviewer)
-      echo "Issue #$n is in review; its PR is #${pr:-?} in $REPO. Review it exactly as your SOUL.md says: inspect the diff, run the tests yourself, post the evidence table, set the agent/review commit status on the PR head, and move the ticket with ticket.sh. Finish with one line: REVIEWED #$n APPROVED|CHANGES_REQUESTED <PR url>.";;
+      echo "Issue #$n is in review; its PR is #${pr:-?} in $REPO, head commit $head. Run git fetch and check out exactly that commit before anything else; a verdict about any other commit is void. Review it exactly as your SOUL.md says: inspect the diff, run the tests yourself, post the evidence table, set the agent/review commit status on the PR head, and move the ticket with ticket.sh. Finish with one line: REVIEWED #$n APPROVED|CHANGES_REQUESTED <PR url>.";;
     backend|ui|tester-build)
       echo "Work ticket #$n. Read AGENTS.md in your workspace and daily-briefing/agents/PROTOCOL.md, then run: gh issue view $n --repo $REPO --comments${pr:+ and gh pr view $pr --repo $REPO --comments}. If it was sent back, address every numbered point in the latest review/test comments and the manager's and human owner's notes, on the same branch and PR. Work inside ./daily-briefing. Finish with one line: DONE #$n <PR url> or BLOCKED #$n <reason>.";;
     tester)
@@ -89,7 +90,7 @@ prompt_for() {
       if [ "$(gh issue view "$n" --repo "$REPO" --json labels --jq '[.labels[].name] | index("status:testing") != null')" != "true" ]; then
         prompt_for tester-build "$n"; return
       fi
-      echo "Issue #$n passed review and is ready for testing; its PR is #${pr:-?} in $REPO. Read AGENTS.md in your workspace and daily-briefing/agents/PROTOCOL.md. Independently of the builder and reviewer: check out the PR head in ./daily-briefing, use a fresh virtualenv and a temporary database, run the full test suite and the acceptance scenarios that apply to this ticket, post the exact commands and output, set agent/test on the PR head commit, and move the ticket with ticket.sh. Finish with one line: TESTED #$n PASS|FAIL <PR url>.";;
+      echo "Issue #$n passed review and is ready for testing; its PR is #${pr:-?} in $REPO, head commit $head; test exactly that commit. Read AGENTS.md in your workspace and daily-briefing/agents/PROTOCOL.md. Independently of the builder and reviewer: check out the PR head in ./daily-briefing, use a fresh virtualenv and a temporary database, run the full test suite and the acceptance scenarios that apply to this ticket, post the exact commands and output, set agent/test on the PR head commit, and move the ticket with ticket.sh. Finish with one line: TESTED #$n PASS|FAIL <PR url>.";;
   esac
 }
 
@@ -112,7 +113,8 @@ run_hermes() {
   tail -n 3 "$out"
   # A run that ended on provider limits did not complete its work: pause Hermes until reset.
   if [ "$rc" -ne 0 ] || ! jq -e '.completed == true and .failed != true' "$usage" >/dev/null 2>&1; then
-    grep -qiE '429|RESOURCE_EXHAUSTED|rate.?limit|quota' "$out" && next_reset > "$LOG/quota/hermes-paused-until"
+    if grep -qi 'free-models-per-day' "$out"; then next_reset_for openrouter/ > "$LOG/quota/hermes-paused-until"
+    elif grep -qiE '429|RESOURCE_EXHAUSTED|rate.?limit|quota' "$out"; then next_reset > "$LOG/quota/hermes-paused-until"; fi
     return 1
   fi
 }
@@ -123,6 +125,9 @@ next_reset() {
   [ "$t" -gt "$(date +%s)" ] || t="$(date -u -d 'tomorrow 08:00' +%s)"
   echo "$t"
 }
+
+# OpenRouter's free daily limit resets at 00:00 UTC, not at Gemini's reset.
+next_reset_for() { case "$1" in openrouter/*) date -u -d 'tomorrow 00:00' +%s;; *) next_reset;; esac; }
 
 # OpenClaw does not switch models mid-turn once a tool has run (replay safety), so on a
 # quota error we resume the same session on the next model with remaining free quota.
@@ -141,7 +146,7 @@ run_openclaw() {
         --message "$msg" --json --timeout 2300 >"$out" 2>"${out%.json}.err"
       set -e
       status="$(jq -r '.status // "error"' "$out" 2>/dev/null || echo error)"
-      text="$(jq -r '.result.payloads[-1].text // .summary // ""' "$out" 2>/dev/null || true)
+      text="$(jq -r '.result.payloads[-1].text // .error.message // .summary // ""' "$out" 2>/dev/null || true)
 $(cat "${out%.json}.err" 2>/dev/null)"
       log_jsonl --arg ts "$ts" --arg a "$agent" --arg n "$n" --arg m "$m" --arg s "$status" --arg out "$out" \
         --slurpfile r <(cat "$out" 2>/dev/null || echo '{}') \
@@ -149,14 +154,14 @@ $(cat "${out%.json}.err" 2>/dev/null)"
           status:$s, model:$m, provider:$x.provider, assistant_turns:$x.assistantTurns,
           input_tokens:$x.usage.input, output_tokens:$x.usage.output, cache_read_tokens:$x.usage.cacheRead,
           total_tokens:$x.usage.total, actual_cost_usd:($x.costUsd // 0), output:$out}'
-      if [ "$status" = "ok" ] && ! grep -qE '\(429\)|RESOURCE_EXHAUSTED|\(503\)|high demand' <<<"$text"; then
+      if [ "$status" = "ok" ] && ! grep -qE '\(429\)|\| 429|RESOURCE_EXHAUSTED|\(503\)|high demand' <<<"$text"; then
         echo "$text" | tail -n 3; return 0
       fi
       msg="Continue the task from where you stopped (the previous model hit a provider limit). Do not redo steps that already succeeded; check git and GitHub state first."
-      if grep -qE '\(429\)|RESOURCE_EXHAUSTED' <<<"$text"; then
+      if grep -qE '\(429\)|\| 429|RESOURCE_EXHAUSTED' <<<"$text"; then
         if [ -z "$retried" ]; then retried=1; sleep 65; continue; fi   # per-minute window
         # per-day quota: Gemini free tier resets at midnight Pacific (08:00 UTC in winter)
-        printf '%s\t%s\n' "$m" "$(next_reset)" >> "$LEDGER"
+        printf '%s\t%s\n' "$m" "$(next_reset_for "$m")" >> "$LEDGER"
       fi
       retried=""; break
     done
@@ -198,6 +203,12 @@ for e in (yaml.safe_load(open(sys.argv[1])) or {}).get("fallback_providers") or 
     reasons="$reasons$m=$code,"
     { [ "$retry" -eq 0 ] || [ "$t" -lt "$retry" ]; } && retry="$t"
   done
+  code="$(set -a; . "$HOME/.secrets/agents.env"; curl -s --max-time 40 -o "$body" -w '%{http_code}' \
+    -H "Authorization: Bearer $OPENROUTER_API_KEY" -H 'content-type: application/json' \
+    -d '{"model":"nvidia/nemotron-3-ultra-550b-a55b:free","messages":[{"role":"user","content":"Reply with OK"}],"max_tokens":16}' \
+    https://openrouter.ai/api/v1/chat/completions || true)"
+  echo "$(date -u +%FT%TZ) $agent openrouter $code" >> "$LOG/quota/probes.log"
+  if [ "$code" = 200 ]; then rm -f "$body"; echo "ok openrouter"; return; fi
   rm -f "$body"
   echo "pause $retry ${reasons%,}"
 }

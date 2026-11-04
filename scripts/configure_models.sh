@@ -61,9 +61,9 @@ cat > /tmp/openclaw-models.json5 <<EOF
 { tools: { profile: "coding" },
   agents: { entries: {
   backend: { model: { primary: "google/gemini-3.5-flash",
-                      fallbacks: ["google/gemini-3.6-flash", "google/gemini-3-flash-preview", "$OR"] } },
+                      fallbacks: ["google/gemini-3.6-flash", "google/gemini-3-flash-preview", "google/gemini-3.5-flash-lite", "$OR"] } },
   ui:      { model: { primary: "google/gemini-3-flash-preview",
-                      fallbacks: ["google/gemini-3.5-flash", "google/gemini-3.6-flash", "$OR"] } },
+                      fallbacks: ["google/gemini-3.5-flash", "google/gemini-3.6-flash", "google/gemini-3.5-flash-lite", "$OR"] } },
   tester:  { model: { primary: "google/gemini-3.6-flash",
                       fallbacks: ["google/gemini-3-flash-preview", "google/gemini-3.5-flash-lite", "$OR"] } },
 } } }
