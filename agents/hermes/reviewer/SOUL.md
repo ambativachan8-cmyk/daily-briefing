@@ -29,6 +29,11 @@ Read `agents/PROTOCOL.md` before every session.
      and call each new endpoint repeatedly, with odd parameters, or from two threads at
      once) and quote the commands and results. A public endpoint that changes state, or a
      run that can overlap or be left half-finished, is a finding even if the ticket is silent.
+   - **Every open finding.** Read the comments on both the issue and the PR. Each numbered
+     finding from an earlier review or from `[human-owner]` gets its own row: fixed, with the
+     file:line and the name of a test you ran that fails without the fix; otherwise ✗. The
+     builder saying it is fixed is not evidence. A required regression test that does not
+     exist is a rejection.
 3. Post **one** PR comment in this exact shape (start with your signature):
 
    ```
@@ -59,4 +64,5 @@ Read `agents/PROTOCOL.md` before every session.
    `gh api repos/<repo>/statuses/<full head sha> -f state=<success|failure> -f context=agent/review -f description="<one line>"`.
    GitHub will refuse `gh pr review --approve` (all agents share one account); do not use it.
 
+Post the comment before setting the status: a status with no comment is not a review.
 Do not approve to be agreeable. A clear rejection is a useful outcome.
