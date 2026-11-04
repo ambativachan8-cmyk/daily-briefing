@@ -1,0 +1,7 @@
+Implements all requirements for ticket #2:
+- Persist all run details: items table stores title, link, description, and first_seen_run_id. GET /runs/{id} returns run details and items with is_new flags.
+- Atomic runs & rollback: run finalization is all-or-nothing; exceptions during ingestion rollback transaction work so items are not prematurely marked seen.
+- Overlapping runs: database-backed lock prevents concurrent runs across threads/processes.
+- Dynamic Feed: fixed constant start date, gaining items over time (one every 6 hours), with injectable instant.
+- Feed Control: operator fail command (python -m app.ops fail-next), documented in README.md. Public fail route removed.
+- Regression tests: 41 comprehensive tests covering all items 1-6 pass successfully.
