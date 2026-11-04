@@ -136,7 +136,7 @@ run_openclaw() {
   # start clean and re-read GitHub. Replaying a whole earlier session cost 3.3M cache-read
   # tokens on one rework of #2.
   local head pr; pr="$(pr_for "${2:-0}")"; head="$([ -n "$pr" ] && gh pr view "$pr" --repo "$REPO" --json headRefOid --jq '.headRefOid[0:7]' || echo none)"
-  local agent="$1" n="$2" msg="$3" key="agent:$1:issue-${2:-0}:$head" models m ts out status text retried=""
+  local agent="$1" n="$2" msg="$3" key="${DISPATCH_SESSION_KEY:-agent:$1:issue-${2:-0}:$head}" models m ts out status text retried=""
   models="$(openclaw config get "agents.entries.$agent.model" | jq -r '.primary, .fallbacks[]')"
   for m in $models; do
     awk -v m="$m" -v now="$(date +%s)" '$1==m && $2>now {f=1} END {exit !f}' "$LEDGER" && continue
