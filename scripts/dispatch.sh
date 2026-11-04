@@ -126,6 +126,18 @@ next_reset() {
   echo "$t"
 }
 
+# Which Gemini limit is hit for OpenClaw's key: prints "day" only for a per-day 429.
+gemini_quota() {
+  local body code; body="$(mktemp)"
+  code="$(set -a; . "$HOME/.secrets/agents.env"; curl -s --max-time 30 -o "$body" -w '%{http_code}' \
+    -H "x-goog-api-key: $GEMINI_API_KEY_OPENCLAW" -H 'content-type: application/json' \
+    -d '{"contents":[{"parts":[{"text":"Reply with OK"}]}],"generationConfig":{"maxOutputTokens":16}}' \
+    "https://generativelanguage.googleapis.com/v1beta/models/$1:generateContent" || true)"
+  if [ "$code" = 429 ] && jq -e '[.error.details[]?.violations[]?.quotaId // ""] | any(test("PerDay"))' "$body" >/dev/null 2>&1
+  then echo day; else echo other; fi
+  rm -f "$body"
+}
+
 # OpenRouter's free daily limit resets at 00:00 UTC, not at Gemini's reset.
 next_reset_for() { case "$1" in openrouter/*) date -u -d 'tomorrow 00:00' +%s;; *) next_reset;; esac; }
 
@@ -136,7 +148,7 @@ run_openclaw() {
   # start clean and re-read GitHub. Replaying a whole earlier session cost 3.3M cache-read
   # tokens on one rework of #2.
   local head pr; pr="$(pr_for "${2:-0}")"; head="$([ -n "$pr" ] && gh pr view "$pr" --repo "$REPO" --json headRefOid --jq '.headRefOid[0:7]' || echo none)"
-  local agent="$1" n="$2" msg="$3" key="${DISPATCH_SESSION_KEY:-agent:$1:issue-${2:-0}:$head}" models m ts out status text retried=""
+  local agent="$1" n="$2" msg="$3" key="${DISPATCH_SESSION_KEY:-agent:$1:issue-${2:-0}:$head}" models m ts out status text retried="" waits=0
   models="$(openclaw config get "agents.entries.$agent.model" | jq -r '.primary, .fallbacks[]')"
   for m in $models; do
     awk -v m="$m" -v now="$(date +%s)" '$1==m && $2>now {f=1} END {exit !f}' "$LEDGER" && continue
@@ -160,11 +172,16 @@ $(cat "${out%.json}.err" 2>/dev/null)"
       fi
       msg="Continue the task from where you stopped (the previous model hit a provider limit). Do not redo steps that already succeeded; check git and GitHub state first. Commit and push finished work now, in case the limit returns."
       if grep -qE '\(429\)|\| 429|RESOURCE_EXHAUSTED' <<<"$text"; then
-        if [ -z "$retried" ]; then retried=1; sleep 65; continue; fi   # per-minute window
+        # A 429 is usually the 5/min window. Ask Gemini which limit it is before writing off a
+        # model for the day: a probe answered 200 straight after a model had been ledgered.
+        case "$m" in
+          google/*) [ "$(gemini_quota "${m#google/}")" = "day" ] || retried="" ;;
+        esac
+        if [ -z "$retried" ] && [ "$waits" -lt 20 ]; then retried=1; waits=$((waits + 1)); sleep 65; continue; fi
         # per-day quota: Gemini free tier resets at midnight Pacific (08:00 UTC in winter)
         printf '%s\t%s\n' "$m" "$(next_reset_for "$m")" >> "$LEDGER"
       fi
-      retried=""; break
+      retried=""; waits=0; break
     done
   done
   echo "all models exhausted for $agent; see $LEDGER"; return 1
