@@ -20,8 +20,8 @@ printf '%s\n' "$GH_TOKEN" | env -u GH_TOKEN gh auth login --with-token --hostnam
 # Free tier is 5 req/min per model: chain other Gemini models before OpenRouter
 # (50 free req/day), and wait out a short per-minute window instead of switching.
 declare -A H_PRIMARY=([manager]="gemini-3.5-flash" [reviewer]="gemini-3.6-flash")
-declare -A H_FALLBACK=([manager]="gemini-3-flash-preview,gemini-3.6-flash,gemini-3.5-flash-lite"
-                       [reviewer]="gemini-3.5-flash,gemini-3-flash-preview,gemini-3.5-flash-lite")
+declare -A H_FALLBACK=([manager]="gemini-3-flash-preview,gemini-3.6-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite"
+                       [reviewer]="gemini-3.5-flash,gemini-3-flash-preview,gemini-3.5-flash-lite,gemini-3.1-flash-lite")
 HPY=/usr/bin/python3   # system python; PyYAML ships with cloud-init on Ubuntu
 
 for id in manager reviewer; do
@@ -61,11 +61,11 @@ cat > /tmp/openclaw-models.json5 <<EOF
 { tools: { profile: "coding" },
   agents: { entries: {
   backend: { model: { primary: "google/gemini-3.5-flash",
-                      fallbacks: ["google/gemini-3.6-flash", "google/gemini-3-flash-preview", "google/gemini-3.5-flash-lite", "$OR"] } },
+                      fallbacks: ["google/gemini-3.6-flash", "google/gemini-3-flash-preview", "google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite", "$OR"] } },
   ui:      { model: { primary: "google/gemini-3-flash-preview",
-                      fallbacks: ["google/gemini-3.5-flash", "google/gemini-3.6-flash", "google/gemini-3.5-flash-lite", "$OR"] } },
+                      fallbacks: ["google/gemini-3.5-flash", "google/gemini-3.6-flash", "google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite", "$OR"] } },
   tester:  { model: { primary: "google/gemini-3.6-flash",
-                      fallbacks: ["google/gemini-3-flash-preview", "google/gemini-3.5-flash-lite", "$OR"] } },
+                      fallbacks: ["google/gemini-3-flash-preview", "google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite", "$OR"] } },
 } } }
 EOF
 openclaw config patch --file /tmp/openclaw-models.json5

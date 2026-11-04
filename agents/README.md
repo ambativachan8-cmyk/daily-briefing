@@ -5,11 +5,11 @@ they live in `~/.secrets/agents.env` on the VM (git-ignored, not in this repo).
 
 | Agent | Runtime | Role | Prompt | Model (primary → fallbacks) |
 |---|---|---|---|---|
-| Hermes Manager | Hermes Agent v0.22.5, profile `manager` | Orchestrator | [hermes/manager/SOUL.md](hermes/manager/SOUL.md) | `gemini-3.5-flash` → `gemini-3-flash-preview` → `gemini-3.6-flash` → `gemini-3.5-flash-lite` → OpenRouter `nvidia/nemotron-3-ultra-550b-a55b:free` |
-| Hermes Reviewer | Hermes Agent v0.22.5, profile `reviewer` | Review + merge gate | [hermes/reviewer/SOUL.md](hermes/reviewer/SOUL.md) | `gemini-3.6-flash` → `gemini-3.5-flash` → `gemini-3-flash-preview` → `gemini-3.5-flash-lite` → OpenRouter Nemotron-3-Ultra `:free` |
-| OpenClaw Backend Builder | OpenClaw 2026.10.9, agent `backend` | Builder (ingest/store/dedup/schedule) | [openclaw/backend/AGENTS.md](openclaw/backend/AGENTS.md) | `google/gemini-3.5-flash` → `google/gemini-3.6-flash` → `google/gemini-3-flash-preview` → OpenRouter Nemotron-3-Ultra `:free` |
-| OpenClaw UI Builder | OpenClaw 2026.10.9, agent `ui` | Builder (page/history/Run-now) | [openclaw/ui/AGENTS.md](openclaw/ui/AGENTS.md) | `google/gemini-3-flash-preview` → `google/gemini-3.5-flash` → `google/gemini-3.6-flash` → OpenRouter Nemotron-3-Ultra `:free` |
-| OpenClaw Tester | OpenClaw 2026.10.9, agent `tester` | Tester | [openclaw/tester/AGENTS.md](openclaw/tester/AGENTS.md) | `google/gemini-3.6-flash` → `google/gemini-3-flash-preview` → `google/gemini-3.5-flash-lite` → OpenRouter Nemotron-3-Ultra `:free` |
+| Hermes Manager | Hermes Agent v0.22.5, profile `manager` | Orchestrator | [hermes/manager/SOUL.md](hermes/manager/SOUL.md) | `gemini-3.5-flash` → `gemini-3-flash-preview` → `gemini-3.6-flash` → `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite` → OpenRouter `nvidia/nemotron-3-ultra-550b-a55b:free` |
+| Hermes Reviewer | Hermes Agent v0.22.5, profile `reviewer` | Review + merge gate | [hermes/reviewer/SOUL.md](hermes/reviewer/SOUL.md) | `gemini-3.6-flash` → `gemini-3.5-flash` → `gemini-3-flash-preview` → `gemini-3.5-flash-lite` → `gemini-3.1-flash-lite` → OpenRouter Nemotron-3-Ultra `:free` |
+| OpenClaw Backend Builder | OpenClaw 2026.10.9, agent `backend` | Builder (ingest/store/dedup/schedule) | [openclaw/backend/AGENTS.md](openclaw/backend/AGENTS.md) | `google/gemini-3.5-flash` → `google/gemini-3.6-flash` → `google/gemini-3-flash-preview` → `google/gemini-3.5-flash-lite` → `google/gemini-3.1-flash-lite` → OpenRouter Nemotron-3-Ultra `:free` |
+| OpenClaw UI Builder | OpenClaw 2026.10.9, agent `ui` | Builder (page/history/Run-now) | [openclaw/ui/AGENTS.md](openclaw/ui/AGENTS.md) | `google/gemini-3-flash-preview` → `google/gemini-3.5-flash` → `google/gemini-3.6-flash` → `google/gemini-3.5-flash-lite` → `google/gemini-3.1-flash-lite` → OpenRouter Nemotron-3-Ultra `:free` |
+| OpenClaw Tester | OpenClaw 2026.10.9, agent `tester` | Tester | [openclaw/tester/AGENTS.md](openclaw/tester/AGENTS.md) | `google/gemini-3.6-flash` → `google/gemini-3-flash-preview` → `google/gemini-3.5-flash-lite` → `google/gemini-3.1-flash-lite` → OpenRouter Nemotron-3-Ultra `:free` |
 
 Ticket flow and labels: [PROTOCOL.md](PROTOCOL.md). Router and runner:
 [../scripts/dispatch.sh](../scripts/dispatch.sh). Model wiring:
