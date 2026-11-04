@@ -265,7 +265,12 @@ def acquire_lock(name: str):
     Only the holder releases the lock.
     """
     from datetime import datetime, timezone
-    conn = sqlite3.connect(get_db_path())
+    try:
+        conn = sqlite3.connect(get_db_path(), timeout=0.1)
+    except Exception:
+        yield False
+        return
+
     acquired = False
     try:
         conn.execute(
@@ -275,7 +280,7 @@ def acquire_lock(name: str):
         conn.commit()
         acquired = True
         yield True
-    except sqlite3.IntegrityError:
+    except (sqlite3.IntegrityError, sqlite3.OperationalError):
         yield False
     finally:
         if acquired:

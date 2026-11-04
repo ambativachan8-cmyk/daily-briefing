@@ -86,13 +86,43 @@ async def test_regression_4_operator_fail_command(temp_db, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_regression_5_lock_concurrency(temp_db):
-    """5. While a run holds the lock, a second call leaves the lock and run row untouched."""
-    from app.db import acquire_lock
-    with acquire_lock("ingestion") as acquired:
-        assert acquired is True
-        res = await ingest_feed()
-        assert res["status"] == "failed"
-        assert "Another ingestion is already running" in res["error"]
+    """5. While a run holds the lock, second call returns busy at once in under 1s with no new row."""
+    import threading
+    import asyncio
+    import time
+    from unittest.mock import patch
+
+    event_start = threading.Event()
+    event_release = threading.Event()
+
+    async def blocking_fetch(*args, **kwargs):
+        event_start.set()
+        event_release.wait(timeout=5)
+        return [{"id": "b-1", "title": "Blocked", "link": "https://example.com/b1", "description": "desc"}], None
+
+    with patch("app.feed.fetch_feed", side_effect=blocking_fetch):
+        import concurrent.futures
+
+        def run_first():
+            return asyncio.run(ingest_feed())
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(run_first)
+            assert event_start.wait(timeout=3)
+
+            t0 = time.time()
+            res2 = await ingest_feed()
+            t1 = time.time()
+
+            assert (t1 - t0) < 1.0
+            assert res2["status"] == "failed"
+            assert res2["run_id"] is None
+            assert res2["new_items_count"] == 0
+            assert "Another ingestion is already running" in res2["error"]
+
+            event_release.set()
+            res1 = future.result(timeout=5)
+            assert res1["status"] == "success"
 
 
 @pytest.mark.asyncio
