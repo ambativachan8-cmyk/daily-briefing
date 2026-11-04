@@ -78,12 +78,12 @@ prompt_for() {
       if [ -z "$n" ]; then
         echo "There are no open tickets. Plan the project: read docs/PRODUCT_BRIEF.md and agents/PROTOCOL.md in this clone, then create the tickets on GitHub as your SOUL.md describes. To save model calls, write all gh commands into one shell script and run it once. Finish with one line: PLANNED <issue numbers>."
       else
-        echo "Ticket #$n needs you. Run: gh issue view $n --repo $REPO --comments. Follow your SOUL.md: if it was sent back or is a bug, re-queue it to the right builder with a comment explaining why (or mark blocked after 3 retries); if it is held and its dependencies are merged, release it with status:ready. Then update the Delivery status issue. Finish with one line: TRIAGED #$n <action>."
+        echo "Ticket #$n needs you. Run: gh issue view $n --repo $REPO --comments${pr:+ and gh pr view $pr --repo $REPO --comments (the review and test verdicts are on the PR)}. Follow your SOUL.md: if it was sent back or is a bug, re-queue it to the right builder with a comment explaining why (or mark blocked after 3 retries); if it is held and its dependencies are merged, release it with status:ready. Then update the Delivery status issue. Finish with one line: TRIAGED #$n <action>."
       fi;;
     reviewer)
       echo "Issue #$n is in review; its PR is #${pr:-?} in $REPO. Review it exactly as your SOUL.md says: inspect the diff, run the tests yourself, post the evidence table, set the agent/review commit status on the PR head, and move the ticket with ticket.sh. Finish with one line: REVIEWED #$n APPROVED|CHANGES_REQUESTED <PR url>.";;
     backend|ui|tester-build)
-      echo "Work ticket #$n. Read AGENTS.md in your workspace and daily-briefing/agents/PROTOCOL.md, then run: gh issue view $n --repo $REPO --comments. If it was sent back, address every numbered point in the latest review/test comment on the same branch and PR. Work inside ./daily-briefing. Finish with one line: DONE #$n <PR url> or BLOCKED #$n <reason>.";;
+      echo "Work ticket #$n. Read AGENTS.md in your workspace and daily-briefing/agents/PROTOCOL.md, then run: gh issue view $n --repo $REPO --comments${pr:+ and gh pr view $pr --repo $REPO --comments}. If it was sent back, address every numbered point in the latest review/test comments and the manager's and human owner's notes, on the same branch and PR. Work inside ./daily-briefing. Finish with one line: DONE #$n <PR url> or BLOCKED #$n <reason>.";;
     tester)
       # status:testing = verify someone else's PR; any other state = the tester's own ticket
       if [ "$(gh issue view "$n" --repo "$REPO" --json labels --jq '[.labels[].name] | index("status:testing") != null')" != "true" ]; then
