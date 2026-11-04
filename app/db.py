@@ -34,10 +34,19 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
                 status TEXT NOT NULL,
-                error TEXT
+                error TEXT,
+                new_items_count INTEGER DEFAULT 0,
+                is_first_run INTEGER DEFAULT 0
             )
             """
         )
+        # Handle existing database by adding columns if they don't exist
+        columns = [row["name"] for row in conn.execute("PRAGMA table_info(runs)").fetchall()]
+        if "new_items_count" not in columns:
+            conn.execute("ALTER TABLE runs ADD COLUMN new_items_count INTEGER DEFAULT 0")
+        if "is_first_run" not in columns:
+            conn.execute("ALTER TABLE runs ADD COLUMN is_first_run INTEGER DEFAULT 0")
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS items (
@@ -48,27 +57,49 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS config (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS locks (
+                name TEXT PRIMARY KEY,
+                acquired_at TEXT
+            )
+            """
+        )
         conn.commit()
 
 
-def create_run(timestamp: str, status: str, error: str | None = None) -> int:
+def create_run(timestamp: str, status: str, error: str | None = None, new_items_count: int = 0, is_first_run: bool = False) -> int:
     """Create a new run record and return its ID."""
     with get_conn() as conn:
         cursor = conn.execute(
-            "INSERT INTO runs (timestamp, status, error) VALUES (?, ?, ?)",
-            (timestamp, status, error),
+            "INSERT INTO runs (timestamp, status, error, new_items_count, is_first_run) VALUES (?, ?, ?, ?, ?)",
+            (timestamp, status, error, new_items_count, 1 if is_first_run else 0),
         )
         conn.commit()
         return cursor.lastrowid
 
 
-def update_run_status(run_id: int, status: str, error: str | None = None) -> None:
-    """Update an existing run's status and error."""
+def update_run_status(run_id: int, status: str, error: str | None = None, new_items_count: int | None = None, is_first_run: bool | None = None) -> None:
+    """Update an existing run's status and details."""
     with get_conn() as conn:
-        conn.execute(
-            "UPDATE runs SET status = ?, error = ? WHERE id = ?",
-            (status, error, run_id),
-        )
+        if new_items_count is not None and is_first_run is not None:
+            conn.execute(
+                "UPDATE runs SET status = ?, error = ?, new_items_count = ?, is_first_run = ? WHERE id = ?",
+                (status, error, new_items_count, 1 if is_first_run else 0, run_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE runs SET status = ?, error = ? WHERE id = ?",
+                (status, error, run_id),
+            )
         conn.commit()
 
 
@@ -125,3 +156,56 @@ def get_all_item_ids() -> set[str]:
     with get_conn() as conn:
         rows = conn.execute("SELECT id FROM items").fetchall()
         return {row["id"] for row in rows}
+
+
+def get_config(key: str, default: str | None = None) -> str | None:
+    """Get a configuration value."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT value FROM config WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else default
+
+
+def set_config(key: str, value: str) -> None:
+    """Set a configuration value."""
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", (key, value)
+        )
+        conn.commit()
+
+
+@contextmanager
+def acquire_lock(name: str):
+    """
+    Context manager to acquire a named lock.
+    Returns True if acquired, False otherwise.
+    """
+    from datetime import datetime, timezone
+    # Use a separate connection to avoid transaction interference
+    conn = sqlite3.connect(get_db_path())
+    try:
+        # Try to insert a lock record
+        conn.execute(
+            "INSERT INTO locks (name, acquired_at) VALUES (?, ?)",
+            (name, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+        yield True
+    except sqlite3.IntegrityError:
+        # Lock already exists
+        yield False
+    finally:
+        conn.execute("DELETE FROM locks WHERE name = ?", (name,))
+        conn.commit()
+        conn.close()
+
+
+def cleanup_stale_runs() -> None:
+    """Mark any 'running' runs as 'failed' (e.g. after a crash)."""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE runs SET status = 'failed', error = 'Orphaned run (likely crash)' WHERE status = 'running'"
+        )
+        # Also ensure lock is cleared
+        conn.execute("DELETE FROM locks WHERE name = 'ingestion'")
+        conn.commit()

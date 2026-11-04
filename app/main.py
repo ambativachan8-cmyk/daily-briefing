@@ -3,12 +3,17 @@ Main FastAPI application.
 """
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from time import time
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.db import init_db, get_runs, get_run, get_items_by_run
-from app.feed import fetch_feed, ingest_feed, should_feed_fail, get_feed_items
+from app.db import cleanup_stale_runs, get_items_by_run, get_runs, get_run, init_db, set_config
+from app.feed import _check_feed_fail_config, fetch_feed, get_feed_items, ingest_feed
+
+# Simple in-memory rate limiter for /ingest endpoint
+_ingest_last_call: dict[str, float] = {}
+INGEST_RATE_LIMIT_SECONDS = 5  # Minimum 5 seconds between runs
 
 
 @asynccontextmanager
@@ -16,6 +21,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     init_db()
+    cleanup_stale_runs()
     yield
     # Shutdown (if needed)
 
@@ -26,6 +32,18 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+def check_rate_limit(client_ip: str) -> tuple[bool, float | None]:
+    """Check if client is rate limited. Returns (allowed, retry_after_seconds)."""
+    now = time()
+    last = _ingest_last_call.get(client_ip)
+    if last is not None:
+        elapsed = now - last
+        if elapsed < INGEST_RATE_LIMIT_SECONDS:
+            return False, INGEST_RATE_LIMIT_SECONDS - elapsed
+    _ingest_last_call[client_ip] = now
+    return True, None
 
 
 @app.get("/health")
@@ -51,11 +69,11 @@ async def feed_endpoint():
     Synthetic feed endpoint.
     Returns the feed items or an error if configured to fail.
     """
-    if should_feed_fail():
+    if _check_feed_fail_config():
         return JSONResponse(
             status_code=500,
             content={
-                "error": "Feed configured to fail (FEED_FAIL=true)",
+                "error": "Feed configured to fail (fail_next_run=true)",
                 "items": [],
             },
         )
@@ -65,11 +83,23 @@ async def feed_endpoint():
 
 
 @app.post("/ingest")
-async def ingest_endpoint():
+async def ingest_endpoint(request: Request):
     """
     Trigger a feed ingestion run.
     Fetches the feed, determines new items, stores them, and records the run.
+    Rate limited to prevent abuse.
     """
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, retry_after = check_rate_limit(client_ip)
+    if not allowed:
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": "Rate limited. Try again later.",
+                "retry_after_seconds": round(retry_after, 1),
+            },
+        )
+
     result = await ingest_feed()
     return JSONResponse(content=result)
 
@@ -78,7 +108,13 @@ async def ingest_endpoint():
 async def runs_endpoint(limit: int = 100):
     """
     Get run history.
+    Limit is bounded between 1 and 1000.
     """
+    if limit < 1:
+        limit = 100
+    elif limit > 1000:
+        limit = 1000
+
     runs = get_runs(limit)
     return {"runs": [dict(run) for run in runs]}
 
@@ -97,3 +133,13 @@ async def run_detail_endpoint(run_id: int):
         "run": dict(run),
         "items": [dict(item) for item in items],
     }
+
+
+@app.post("/admin/feed/fail-next")
+async def fail_next_run_endpoint():
+    """
+    Admin endpoint to make the next feed fetch fail.
+    This is a non-public way to simulate feed failures for testing.
+    """
+    set_config("fail_next_run", "true")
+    return {"message": "Next feed fetch will fail", "config": "fail_next_run=true"}
