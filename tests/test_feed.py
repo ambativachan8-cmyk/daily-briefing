@@ -1,3 +1,16 @@
+
+import pytest
+
+@pytest.fixture(autouse=True)
+def mock_now(monkeypatch):
+    from datetime import datetime
+    from app.feed import FEED_START_DATE
+    class MockDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return FEED_START_DATE
+    monkeypatch.setattr("app.feed.datetime", MockDatetime)
+
 """
 Tests for the feed and ingestion logic.
 """

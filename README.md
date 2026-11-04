@@ -12,4 +12,10 @@ runtimes and the ticket protocol, and reviews/merges. See:
 - [infra/](infra/) — Terraform for the single VM
 - `DELIVERY.md` — delivery report (written at the end)
 
-Status: infrastructure and agent bootstrap in progress.
+## Operations
+
+To make the next fetch fail on the running service for testing/operator intervention:
+```bash
+python -m app.ops fail-next
+```
+

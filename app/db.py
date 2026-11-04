@@ -221,7 +221,7 @@ def get_items_by_run(run_id: int) -> list[sqlite3.Row]:
     """Get all items seen in a specific run."""
     with get_conn() as conn:
         return conn.execute(
-            "SELECT item_id as id, title, link, description FROM run_items WHERE run_id = ?", (run_id,)
+            "SELECT ri.item_id as id, ri.title, ri.link, ri.description, (ri.run_id = i.first_seen_run_id) as is_new FROM run_items ri JOIN items i ON ri.item_id = i.id WHERE ri.run_id = ?", (run_id,)
         ).fetchall()
 
 

@@ -19,10 +19,8 @@ from app.db import (
     update_run_status,
 )
 
-# Start date for the dynamic feed (default to now if not set, so fresh setups start at 3 items)
-FEED_START_DATE = datetime.fromisoformat(
-    os.environ.get("FEED_START_DATE", datetime.now(timezone.utc).isoformat())
-)
+# Fixed constant start date for the dynamic feed
+FEED_START_DATE = datetime(2026, 11, 4, 0, 0, tzinfo=timezone.utc)
 
 DEFAULT_FEED_ITEMS = [
     {
@@ -57,11 +55,11 @@ def generate_item_id(item: dict[str, Any]) -> str:
     return hashlib.sha256(link.encode()).hexdigest()[:16]
 
 
-def get_feed_items() -> list[dict[str, Any]]:
+def get_feed_items(current_time: datetime | None = None) -> list[dict[str, Any]]:
     """
     Get the synthetic feed items.
     Can be overridden via FEED_ITEMS_JSON environment variable for testing.
-    Otherwise dynamic based on time from FEED_START_DATE.
+    Otherwise dynamic based on time from FEED_START_DATE (gains an item every 6 hours).
     """
     feed_json = os.environ.get("FEED_ITEMS_JSON")
     if feed_json:
@@ -70,9 +68,9 @@ def get_feed_items() -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             raise ValueError("Invalid FEED_ITEMS_JSON environment variable")
 
-    now = datetime.now(timezone.utc)
-    days_elapsed = max(0, (now - FEED_START_DATE).days)
-    num_items = 3 + (days_elapsed // 2)
+    now = current_time or datetime.now(timezone.utc)
+    hours_elapsed = max(0.0, (now - FEED_START_DATE).total_seconds() / 3600)
+    num_items = 3 + int(hours_elapsed // 6)
 
     items = []
     for i in range(num_items):
@@ -120,7 +118,7 @@ def _consume_feed_fail_config(conn=None) -> bool:
     return os.environ.get("FEED_FAIL", "false").lower() == "true"
 
 
-async def fetch_feed(consume_config: bool = False, conn=None) -> tuple[list[dict[str, Any]], str | None]:
+async def fetch_feed(consume_config: bool = False, conn=None, current_time: datetime | None = None) -> tuple[list[dict[str, Any]], str | None]:
     """
     Fetch the synthetic feed.
     Returns (items, error_message).
@@ -130,17 +128,17 @@ async def fetch_feed(consume_config: bool = False, conn=None) -> tuple[list[dict
         return [], "Feed configured to fail (fail_next_run=true)"
 
     try:
-        items = get_feed_items()
+        items = get_feed_items(current_time=current_time)
         return items, None
     except ValueError as e:
         return [], str(e)
 
 
-async def ingest_feed() -> dict[str, Any]:
+async def ingest_feed(current_time: datetime | None = None) -> dict[str, Any]:
     """
     Ingest the feed: fetch, compare with stored items, store new items and run atomically.
     """
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = (current_time or datetime.now(timezone.utc)).isoformat()
 
     with acquire_lock("ingestion") as acquired:
         if not acquired:
@@ -159,7 +157,7 @@ async def ingest_feed() -> dict[str, Any]:
             run_id = create_run(timestamp, "running", conn=conn)
 
             try:
-                feed_items, error = await fetch_feed(consume_config=True, conn=conn)
+                feed_items, error = await fetch_feed(consume_config=True, conn=conn, current_time=current_time)
 
                 if error:
                     update_run_status(run_id, "failed", error, new_items_count=0, is_first_run=False, conn=conn)
@@ -219,6 +217,10 @@ async def ingest_feed() -> dict[str, Any]:
                 }
 
             except Exception as e:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
                 update_run_status(run_id, "failed", str(e), new_items_count=0, is_first_run=False, conn=conn)
                 conn.commit()
                 return {
@@ -230,3 +232,4 @@ async def ingest_feed() -> dict[str, Any]:
                     "new_items": [],
                     "is_first_run": False,
                 }
+
