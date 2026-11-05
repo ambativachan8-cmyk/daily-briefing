@@ -31,14 +31,28 @@ async def scheduler_loop():
 
     logger.info(f"Starting background scheduler with interval: {interval}s")
     
-    # Sleep first to avoid immediate run on startup (which pollutes 'first run' detection)
+    # Run once immediately on startup to establish the first run, then sleep for the interval.
+    # This ensures the first run exists for the public page without polluting history with rapid repeats.
     try:
-        await asyncio.sleep(interval)
+        logger.info(f"Scheduler initial tick at {datetime.now(timezone.utc).isoformat()}")
+        result = await ingest_feed()
+        if result["status"] == "success":
+            logger.info(f"Scheduled ingestion success: {result['new_items_count']} new items.")
+        else:
+            logger.warning(f"Scheduled ingestion skipped or failed: {result.get('error')}")
     except asyncio.CancelledError:
-        logger.info("Scheduler initial sleep cancelled.")
+        logger.info("Scheduler initial tick cancelled.")
         raise
+    except Exception as e:
+        logger.error(f"Error in scheduler initial tick: {e}", exc_info=True)
     
     while True:
+        try:
+            await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            logger.info("Scheduler sleep cancelled.")
+            raise
+        
         try:
             logger.info(f"Scheduler tick at {datetime.now(timezone.utc).isoformat()}")
             result = await ingest_feed()
@@ -50,14 +64,7 @@ async def scheduler_loop():
             logger.info("Scheduler loop cancelled.")
             raise
         except Exception as e:
-            # A scheduler error never stops the web app or later ticks.
             logger.error(f"Error in scheduler tick: {e}", exc_info=True)
-        
-        try:
-            await asyncio.sleep(interval)
-        except asyncio.CancelledError:
-            logger.info("Scheduler sleep cancelled.")
-            raise
 
 _scheduler_task = None
 
