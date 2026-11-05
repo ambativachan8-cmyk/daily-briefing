@@ -31,6 +31,13 @@ async def scheduler_loop():
 
     logger.info(f"Starting background scheduler with interval: {interval}s")
     
+    # Sleep first to avoid immediate run on startup (which pollutes 'first run' detection)
+    try:
+        await asyncio.sleep(interval)
+    except asyncio.CancelledError:
+        logger.info("Scheduler initial sleep cancelled.")
+        raise
+    
     while True:
         try:
             logger.info(f"Scheduler tick at {datetime.now(timezone.utc).isoformat()}")

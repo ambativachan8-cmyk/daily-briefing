@@ -51,7 +51,7 @@
         <div class="briefing-meta">
             Date: {{ latest_run.timestamp }} | {{ latest_run.new_items_count }} new
         </div>
-        {% if latest_items %}
+        {% if latest_run.new_items_count > 0 %}
         <div class="new-items">
             {% for item in latest_items %}
             <div class="new-item">
