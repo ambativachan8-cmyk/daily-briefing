@@ -1,0 +1,28 @@
+== 1. first deploy
+  PROVEN  good release 90a0872 serving and recorded
+  runs in the shared database: 2
+== 2. a release whose dependency cannot be installed
+  deploy: dependency install failed for 48db210; nothing changed, the current release keeps serving
+  PROVEN  deploy reported failure (exit 1)
+  PROVEN  old release served throughout: 16 health checks, 0 not 200
+  PROVEN  serving process untouched (pid 235006)
+  PROVEN  deployed SHA still 90a0872; bad 48db210 not recorded
+  PROVEN  failed release removed from releases/
+== 3. retry: the next call tries again, and a fix deploys
+  PROVEN  the retry really attempted the install again
+  PROVEN  fixed release 2b09644 deployed; previous recorded as 90a0872
+  PROVEN  shared database survived the release
+== 4. rollback
+  deploy: rolled back to 90a0872; 2b09644 stays held until a newer commit or an explicit deploy
+  PROVEN  rolled back: 90a0872 serving and recorded
+  PROVEN  healthy after rollback
+  PROVEN  the rolled-back head is not redeployed automatically
+== 5. a release that installs and passes staging, then fails only on the live service
+  PROVEN  explicit deploy returned to 2b09644
+  deploy: 150a622 failed on the live service
+  deploy: restored 2b09644
+  PROVEN  automatic restore: 2b09644 serving, 150a622 not recorded
+  PROVEN  failing head is held, so it cannot flap the service each tick
+  PROVEN  healthy after the automatic restore
+
+deploy proof: 0 failed. Files in deploy-fixed-20261105T210611Z

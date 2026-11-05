@@ -1,0 +1,9 @@
+== first deploy of a good release
+  exit 0
+== main moves to a release with an uninstallable dependency
+  --if-changed exit 1
+  REPRODUCED the serving checkout moved to the bad commit before the install failed
+  REPRODUCED the serving tree now holds the bad code; any restart would run it on the old virtualenv
+  second --if-changed exit 0
+  REPRODUCED the retry did nothing: HEAD already equals main, so the failed deploy counts as done
+baseline proof finished; files in deploy-baseline-20261105T210717Z
