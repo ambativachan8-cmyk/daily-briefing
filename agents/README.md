@@ -15,7 +15,7 @@ Ticket flow and labels: [PROTOCOL.md](PROTOCOL.md). Router and runner:
 [../scripts/dispatch.sh](../scripts/dispatch.sh). Model wiring:
 [../scripts/configure_models.sh](../scripts/configure_models.sh).
 
-## Model providers (all zero-cost, verified 2026-11-03)
+## Model providers (all zero-cost; first verified 2026-11-03)
 
 - **Google AI Studio, free tier.** Two keys in two separate projects: one for the Hermes
   agents, one for the OpenClaw agents. A live 429 from a Pro model reports quota ids ending

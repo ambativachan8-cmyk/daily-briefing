@@ -35,7 +35,15 @@ deps_closed() {
 route() {
   local list n labels role
   list="$(issues)"
-  [ -z "$list" ] && { echo "manager plan"; return; }
+  # No open tickets: plan only a brand-new project. Once tickets have closed, finished work stays finished.
+  if [ -z "$list" ]; then
+    if [ -n "$(gh issue list --repo "$REPO" --state closed --limit 1 --json number --jq '.[].number')" ]; then
+      echo "idle"
+    else
+      echo "manager plan"
+    fi
+    return
+  fi
   # 1) review, 2) test, 3) send-backs and interrupted work to builders, 4) ready builder
   # work, 5) manager triage. The tester is also a builder for test-suite tickets (role:tester).
   while read -r n labels; do case ",$labels," in *,status:in-review,*) echo "reviewer $n"; return;; esac; done <<<"$list"
