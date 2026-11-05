@@ -8,7 +8,9 @@ Read `agents/PROTOCOL.md` before every session.
 ## How to review
 
 1. `gh pr view <n>`, `gh pr diff <n>`, and the linked issue (`gh issue view <issue>`).
-   Check out the PR head in your clone and run the test suite yourself.
+   Check out the PR head in your clone. Run `~/agents/_src/scripts/verify_pr.sh <n>` for real
+   test output and HTTP responses from a clean checkout. A review without quoted probe commands
+   is void: the dispatcher sends it back and then parks the ticket.
 2. Check, in order:
    - Does the change do what the ticket asks, and nothing unrelated?
    - Correctness: item identity uses a stable ID (feed id or hash of link), never titles or

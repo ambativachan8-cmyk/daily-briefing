@@ -82,15 +82,15 @@ prompt_for() {
         echo "Ticket #$n needs you. Run: gh issue view $n --repo $REPO --comments${pr:+ and gh pr view $pr --repo $REPO --comments (the review and test verdicts are on the PR)}. Follow your SOUL.md: if it was sent back or is a bug, re-queue it to the right builder with a comment explaining why (or mark blocked after 3 retries); if it is held and its dependencies are merged, release it with status:ready. Then update the Delivery status issue. Finish with one line: TRIAGED #$n <action>."
       fi;;
     reviewer)
-      echo "Issue #$n is in review; its PR is #${pr:-?} in $REPO, head commit $head. Run git fetch and check out exactly that commit before anything else; a verdict about any other commit is void. Read gh issue view $n --repo $REPO --comments and gh pr view ${pr:-?} --repo $REPO --comments first. Review it exactly as your SOUL.md says: inspect the diff, run the tests yourself, post the evidence table, set the agent/review commit status on the PR head, and move the ticket with ticket.sh. Finish with one line: REVIEWED #$n APPROVED|CHANGES_REQUESTED <PR url>.";;
+      echo "Issue #$n is in review; its PR is #${pr:-?} in $REPO, head commit $head. Free-tier quota allows about 6 model calls, so chain shell commands. First command, all at once: git fetch and check out exactly that commit (a verdict about any other commit is void); gh issue view $n --repo $REPO --comments; gh pr view ${pr:-?} --repo $REPO --comments; gh pr diff ${pr:-?} --repo $REPO; ~/agents/_src/scripts/verify_pr.sh ${pr:-?}. That script gives you real test output and HTTP responses for the 'Tests run' row. Then run your own probes in one command, and quote each command and result in the 'Own probes' row: a review with an empty row is void. Review as your SOUL.md says: post the evidence table first, then set the agent/review commit status on the PR head and move the ticket with ticket.sh. Finish with one line: REVIEWED #$n APPROVED|CHANGES_REQUESTED <PR url>.";;
     backend|ui|tester-build)
-      echo "Work ticket #$n. Read AGENTS.md in your workspace and daily-briefing/agents/PROTOCOL.md, then run: gh issue view $n --repo $REPO --comments${pr:+ and gh pr view $pr --repo $REPO --comments}. If it was sent back, address every numbered point in the latest review/test comments and the manager's and human owner's notes, on the same branch and PR. Work inside ./daily-briefing. Finish with one line: DONE #$n <PR url> or BLOCKED #$n <reason>.";;
+      echo "Work ticket #$n. Free-tier quota allows about 15 model calls for this ticket, so read only what you need, write whole files in one step, and chain shell commands (tests, commit, push, PR, ticket.sh) into one. Read AGENTS.md in your workspace and daily-briefing/agents/PROTOCOL.md, then run: gh issue view $n --repo $REPO --comments${pr:+ and gh pr view $pr --repo $REPO --comments}. If it was sent back, address every numbered point in the latest review/test comments and the manager's and human owner's notes, on the same branch and PR. Work inside ./daily-briefing. Finish with one line: DONE #$n <PR url> or BLOCKED #$n <reason>.";;
     tester)
       # status:testing = verify someone else's PR; any other state = the tester's own ticket
       if [ "$(gh issue view "$n" --repo "$REPO" --json labels --jq '[.labels[].name] | index("status:testing") != null')" != "true" ]; then
         prompt_for tester-build "$n"; return
       fi
-      echo "Issue #$n passed review and is ready for testing; its PR is #${pr:-?} in $REPO, head commit $head; test exactly that commit. Read AGENTS.md in your workspace and daily-briefing/agents/PROTOCOL.md. Independently of the builder and reviewer: check out the PR head in ./daily-briefing, use a fresh virtualenv and a temporary database, run the full test suite and the acceptance scenarios that apply to this ticket, post the exact commands and output, set agent/test on the PR head commit, and move the ticket with ticket.sh. Finish with one line: TESTED #$n PASS|FAIL <PR url>.";;
+      echo "Issue #$n passed review and is ready for testing; its PR is #${pr:-?} in $REPO, head commit $head; test exactly that commit. Free-tier quota allows about 4 model calls. Read AGENTS.md in your workspace and follow its steps: run ~/agents/_src/scripts/verify_pr.sh ${pr:-?} into a file, judge the output against gh issue view $n --repo $REPO, and post it with a first line of exactly: [openclaw-tester] Test of ${head:0:7} — PASS or FAIL. Then set agent/test on the PR head commit and move the ticket with ticket.sh, in one command. Finish with one line: TESTED #$n PASS|FAIL <PR url>.";;
   esac
 }
 
@@ -111,10 +111,15 @@ run_hermes() {
       total_tokens:$u[0].total_including_auxiliary.total_tokens, actual_cost_usd:0,
       list_price_estimate_usd:$u[0].total_including_auxiliary.estimated_cost_usd, output:$out}'
   tail -n 3 "$out"
-  # A run that ended on provider limits did not complete its work: pause Hermes until reset.
+  # A run that ended on provider limits did not complete its work. Ask the providers how long to
+  # pause: a per-minute 429 must not park the whole team until tomorrow's reset.
   if [ "$rc" -ne 0 ] || ! jq -e '.completed == true and .failed != true' "$usage" >/dev/null 2>&1; then
-    if grep -qi 'free-models-per-day' "$out"; then next_reset_for openrouter/ > "$LOG/quota/hermes-paused-until"
-    elif grep -qiE '429|RESOURCE_EXHAUSTED|rate.?limit|quota' "$out"; then next_reset > "$LOG/quota/hermes-paused-until"; fi
+    if grep -qiE 'free-models-per-day|429|RESOURCE_EXHAUSTED|rate.?limit|quota' "$out"; then
+      local verdict until_ts
+      read -r verdict until_ts _ <<<"$(probe_hermes "$agent" | tail -n 1)"
+      if [ "$verdict" = "pause" ]; then echo "$until_ts" > "$LOG/quota/hermes-paused-until"
+      else echo 0 > "$LOG/quota/hermes-paused-until"; fi
+    fi
     return 1
   fi
 }
@@ -241,22 +246,49 @@ latest_gates() {   # <sha> -> "agent/review=<state> agent/test=<state>" from the
               | group_by(.context) | map(max_by([.created_at, .id]))
               | map("\(.context)=\(.state)") | sort | join(" ")'
 }
+# Does this PR's newest verdict comment for <sha> carry real evidence? Prints the gap, if any.
+evidence_gap() {  # <pr> <sha>
+  local sha7="${2:0:7}" comments review test
+  comments="$(gh pr view "$1" --repo "$REPO" --json comments --jq '.comments[].body')"
+  review="$(gh pr view "$1" --repo "$REPO" --json comments \
+    --jq "[.comments[].body | select(contains(\"hermes-reviewer] Review of $sha7\"))] | last // empty")"
+  [ -n "$review" ] || { echo "reviewer:no review comment for $sha7"; return; }
+  grep -qE '^\| *Own probes.*`[^`]+`' <<<"$review" || { echo "reviewer:no quoted probes in the review of $sha7"; return; }
+  test="$(gh pr view "$1" --repo "$REPO" --json comments \
+    --jq "[.comments[].body | select(contains(\"openclaw-tester] Test of $sha7\"))] | last // empty")"
+  grep -q "verify_pr head: $2" <<<"$test" || { echo "tester:no verify_pr output for $sha7"; return; }
+}
+
+# A review already approved and tested at this exact head needs no second test run.
+skip_repeat_tests() {
+  local n pr sha
+  for n in $(gh issue list --repo "$REPO" --state open --label status:testing --json number --jq '.[].number'); do
+    pr="$(pr_for "$n")"; [ -n "$pr" ] || continue
+    sha="$(gh pr view "$pr" --repo "$REPO" --json headRefOid --jq .headRefOid)"
+    [ "$(latest_gates "$sha")" = "agent/review=success agent/test=success" ] && [ -z "$(evidence_gap "$pr" "$sha")" ] || continue
+    "$HOME/agents/_src/scripts/ticket.sh" move "$n" ready-to-merge manager >/dev/null
+    echo "#$n: tests already passed at ${sha:0:7}; no repeat test run"
+  done
+}
+
 merge_decisions() {
-  local n pr sha gates evidence comments
+  local n pr sha gates evidence gap who what stage
   for n in $(gh issue list --repo "$REPO" --state open --label status:ready-to-merge --json number --jq '.[].number'); do
     pr="$(pr_for "$n")"; [ -n "$pr" ] || continue
     sha="$(gh pr view "$pr" --repo "$REPO" --json headRefOid --jq .headRefOid)"
     gates="$(latest_gates "$sha")"
     [ "$gates" = "agent/review=success agent/test=success" ] || { echo "PR #$pr not merge-ready at ${sha:0:7}: ${gates:-no gate statuses}"; continue; }
-    # A green status with no review comment for this head is not a review: send it back once,
+    # A green status without its evidence for this head is not a verdict: send it back once,
     # then park it for the human.
-    comments="$(gh pr view "$pr" --repo "$REPO" --json comments --jq '.comments[].body')"
-    if ! grep -q "hermes-reviewer\] Review of ${sha:0:7}" <<<"$comments"; then
-      if grep -q "no review comment for ${sha:0:7}" <<<"$comments"; then
+    gap="$(evidence_gap "$pr" "$sha")"
+    if [ -n "$gap" ]; then
+      who="${gap%%:*}"; what="${gap#*:}"
+      if gh pr view "$pr" --repo "$REPO" --json comments --jq '.comments[].body' | grep -qF "[dispatcher] $what"; then
         gh issue edit "$n" --repo "$REPO" --add-label blocked >/dev/null
       else
-        gh pr comment "$pr" --repo "$REPO" --body "[dispatcher] \`agent/review\` is success but there is no review comment for ${sha:0:7}. Returned to the reviewer." >/dev/null
-        "$HOME/agents/_src/scripts/ticket.sh" move "$n" in-review reviewer >/dev/null
+        gh pr comment "$pr" --repo "$REPO" --body "[dispatcher] $what. A green status without its evidence is not a verdict. Returned to the $who." >/dev/null
+        if [ "$who" = reviewer ]; then stage=in-review; else stage=testing; fi
+        "$HOME/agents/_src/scripts/ticket.sh" move "$n" "$stage" "$who" >/dev/null
       fi
       continue
     fi
@@ -278,7 +310,7 @@ Ticket #$n is \`status:ready-to-merge\`. Waiting for the human merge — agents 
 }
 
 agent="${1:-next}"; n="${2:-}"
-[ "$agent" = "next" ] && merge_decisions
+[ "$agent" = "next" ] && { skip_repeat_tests; merge_decisions; }
 if [ "$agent" = "next" ]; then
   read -r agent n <<<"$(route)"
   [ "$agent" = "idle" ] && { echo "idle: nothing actionable"; exit 0; }
