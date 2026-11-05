@@ -37,11 +37,34 @@ call() {  # <method> <path>
 }
 call GET /health; HEALTH="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/health")"
 call GET /runs
+# Make sure a first run exists (a scheduler tick may already have made it).
+[ "$(curl -s "http://127.0.0.1:$PORT/runs" | jq '.runs | length' 2>/dev/null)" = 0 ] && call POST /ingest
+
+# The brief's public page, judged on the raw HTML a first visitor receives: JavaScript that
+# might fill the page later does not count. Skipped only while / is not an HTML page yet.
+PAGE_RESULT=ok
+page_check() {  # <label> <pattern> <text>
+  if grep -qiE "$2" <<<"$3"; then echo "  ok      $1"; else echo "  MISSING $1"; PAGE_RESULT=fail; fi
+}
+FIRST="$(curl -s "http://127.0.0.1:$PORT/")"
+if grep -qi '<html' <<<"$FIRST"; then
+  echo; echo "Page checks on raw HTML after the first run:"
+  page_check "a link for each new item" 'href="https://example\.com/item-[0-9]+"' "$FIRST"
+  page_check "says this is the first run" 'first run' "$FIRST"
+  page_check "dated briefing" '20[0-9]{2}-[0-9]{2}-[0-9]{2}|(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* [0-9]{1,2}' "$FIRST"
+  page_check "count of new items" '[0-9]+ new' "$FIRST"
+  page_check "history row marked with a check mark" '✓|&check;|&#10003;|&#x2713;' "$FIRST"
+  page_check "Run now control" 'run now' "$FIRST"
+  grep -qiE 'fetch\(|XMLHttpRequest' <<<"$FIRST" && echo "  note    the page uses JavaScript to load data"
+else
+  PAGE_RESULT=n/a; echo; echo "Page checks skipped: / is not an HTML page yet."
+fi
+
 call POST /ingest
 call POST /ingest
 call GET /runs
 call GET /
 echo; echo "app log (last 15 lines):"; tail -n 15 "$W/app.log" | cut -c1-300
 
-echo; echo "verify_pr result: pytest=$TEST_RC health=$HEALTH head=$SHA"
-[ "$TEST_RC" = 0 ] && [ "$HEALTH" = 200 ]
+echo; echo "verify_pr result: pytest=$TEST_RC health=$HEALTH page=$PAGE_RESULT head=$SHA"
+[ "$TEST_RC" = 0 ] && [ "$HEALTH" = 200 ] && [ "$PAGE_RESULT" != fail ]

@@ -16,7 +16,7 @@ SHA="$(gh pr view "$PR" --repo "$REPO" --json headRefOid --jq .headRefOid)"
 
 [ -s "$FILE" ] || { echo "no evidence: run verify_pr.sh $PR > $FILE first" >&2; exit 2; }
 grep -q "^verify_pr head: $SHA$" "$FILE" || { echo "evidence in $FILE is not for head $SHA; rerun verify_pr.sh" >&2; exit 2; }
-if [ "$VERDICT" = PASS ] && ! grep -q "^verify_pr result: pytest=0 health=200 " "$FILE"; then
+if [ "$VERDICT" = PASS ] && ! grep -qE "^verify_pr result: pytest=0 health=200 page=(ok|n/a) " "$FILE"; then
   echo "refusing PASS: verify_pr did not pass; post FAIL" >&2; exit 2
 fi
 
