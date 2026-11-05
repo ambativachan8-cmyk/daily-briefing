@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs `dispatch.sh next` every 10 minutes as a systemd user timer on the VM, so the agent
+# Runs `dispatch.sh next` every 2 minutes as a systemd user timer on the VM, so the agent
 # team keeps moving without a human starting each run. Overlap is impossible (flock in
 # dispatch.sh); quota pauses and the loop guard stop it from burning free quota.
 #   install_dispatch_timer.sh            install + start
@@ -23,10 +23,10 @@ TimeoutStartSec=3h
 EOF
 cat > "$D/dispatch.timer" <<'EOF'
 [Unit]
-Description=Run the agent dispatcher every 10 minutes
+Description=Run the agent dispatcher every 2 minutes
 
 [Timer]
-OnCalendar=*:0/10
+OnCalendar=*:0/2
 Persistent=false
 
 [Install]
