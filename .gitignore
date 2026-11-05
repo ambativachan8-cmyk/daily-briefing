@@ -28,3 +28,4 @@ data/
 # Agent runtime state (sanitized copies live in agents/)
 .openclaw/
 .hermes/
+venv/
