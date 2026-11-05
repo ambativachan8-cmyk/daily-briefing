@@ -17,6 +17,11 @@ check() {  # <label> <condition command...>
   if "$@" >/dev/null 2>&1; then echo "  PROVEN  $label"; else echo "  FAILED  $label"; FAILS=$((FAILS + 1)); fi
 }
 
+echo "== positive controls: without these, a broken probe would make every denial below look proven"
+check "probes really run as the agent user" test "$("${A[@]}" id -un 2>/dev/null)" = agent
+check "the agent user can read its own home" "${A[@]}" test -r /home/agent
+check "the owner can read what the agent is denied" test -r "$HOME/deploy/shared/data/briefing.db"
+
 echo "== accounts"
 check "agent belongs only to its own group" test "$(id -nG agent)" = agent
 check "candidate belongs only to its own group" test "$(id -nG candidate)" = candidate

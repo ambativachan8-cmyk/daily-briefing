@@ -1,7 +1,7 @@
 {
   "agents": {
     "defaults": {
-      "workspace": "/home/ubuntu/.openclaw/workspace",
+      "workspace": "/home/agent/.openclaw/workspace",
       "skipBootstrap": true,
       "systemAgent": {
         "agentId": "main"
@@ -14,16 +14,16 @@
     "entries": {
       "main": {
         "name": "main",
-        "workspace": "/home/ubuntu/.openclaw/workspace",
-        "agentDir": "/home/ubuntu/.openclaw/agents/main/agent",
+        "workspace": "/home/agent/.openclaw/workspace",
+        "agentDir": "/home/agent/.openclaw/agents/main/agent",
         "identity": {
           "name": "main"
         }
       },
       "backend": {
         "name": "backend",
-        "workspace": "/home/ubuntu/agents/backend",
-        "agentDir": "/home/ubuntu/.openclaw/agents/backend/agent",
+        "workspace": "/home/agent/agents/backend",
+        "agentDir": "/home/agent/.openclaw/agents/backend/agent",
         "identity": {
           "name": "backend"
         },
@@ -42,8 +42,8 @@
       },
       "ui": {
         "name": "ui",
-        "workspace": "/home/ubuntu/agents/ui",
-        "agentDir": "/home/ubuntu/.openclaw/agents/ui/agent",
+        "workspace": "/home/agent/agents/ui",
+        "agentDir": "/home/agent/.openclaw/agents/ui/agent",
         "identity": {
           "name": "ui"
         },
@@ -62,8 +62,8 @@
       },
       "tester": {
         "name": "tester",
-        "workspace": "/home/ubuntu/agents/tester",
-        "agentDir": "/home/ubuntu/.openclaw/agents/tester/agent",
+        "workspace": "/home/agent/agents/tester",
+        "agentDir": "/home/agent/.openclaw/agents/tester/agent",
         "identity": {
           "name": "tester"
         },
@@ -75,6 +75,32 @@
             "google/gemini-3.1-flash-lite",
             "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
           ]
+        }
+      },
+      "tester-judge": {
+        "name": "tester-judge",
+        "workspace": "/home/agent/agents/tester-judge",
+        "agentDir": "/home/agent/.openclaw/agents/tester-judge/agent",
+        "identity": {
+          "name": "tester-judge"
+        },
+        "model": {
+          "primary": "nvidia/z-ai/glm-5.3-flash",
+          "fallbacks": [
+            "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
+            "google/gemini-3.5-flash-lite",
+            "google/gemini-3.1-flash-lite",
+            "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
+          ]
+        },
+        "tools": {
+          "profile": "minimal",
+          "deny": [
+            "*"
+          ],
+          "exec": {
+            "security": "deny"
+          }
         }
       }
     }
