@@ -19,6 +19,13 @@ if [ "${1:-}" = "--if-changed" ] && [ "$(git -C "$APP" rev-parse HEAD)" = "$(git
    && systemctl --user is-active -q daily-briefing.service; then
   exit 0
 fi
+# Docs, scripts and tests do not change the running app. A restart would add a run to the public
+# history (the scheduler ticks at startup), so only move the checkout.
+if [ "${1:-}" = "--if-changed" ] && systemctl --user is-active -q daily-briefing.service \
+   && git -C "$APP" diff --quiet HEAD origin/main -- app templates requirements.txt; then
+  git -C "$APP" checkout -q --detach origin/main
+  exit 0
+fi
 git -C "$APP" checkout -q --detach origin/main
 [ -f "$APP/requirements.txt" ] && [ -f "$APP/app/main.py" ] || { echo "main has no app yet; nothing to deploy"; exit 0; }
 
@@ -33,6 +40,8 @@ Description=Daily Briefing web app (merged main)
 
 [Service]
 WorkingDirectory=$APP
+# The synthetic feed gains one item every 6 hours, so each scheduled run has something new to report.
+Environment=SCHEDULER_INTERVAL_SECONDS=21600
 ExecStart=$APP/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port $PORT --workers 1
 Restart=always
 RestartSec=3
