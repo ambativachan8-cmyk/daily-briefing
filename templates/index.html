@@ -91,6 +91,9 @@
                         {% else %}
                         {{ run.status }}
                         {% endif %}
+                        {% if run.is_first_run %}
+                        <span class="first-run-badge" style="margin-left: 8px;">first run</span>
+                        {% endif %}
                         {% if run.error %}
                         <br><small style="color: #dc3545;">{{ run.error }}</small>
                         {% endif %}
