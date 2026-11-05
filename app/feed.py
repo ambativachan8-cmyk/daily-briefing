@@ -155,6 +155,7 @@ async def ingest_feed(current_time: datetime | None = None) -> dict[str, Any]:
         from app.db import get_conn
         with get_conn() as conn:
             run_id = create_run(timestamp, "running", conn=conn)
+            conn.commit()
 
             try:
                 feed_items, error = await fetch_feed(consume_config=True, conn=conn, current_time=current_time)
