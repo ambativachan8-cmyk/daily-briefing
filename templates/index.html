@@ -44,12 +44,12 @@
         <h2>
             Latest Briefing
             {% if latest_run and latest_run.is_first_run %}
-            <span class="first-run-badge">First Run</span>
+            <span class="first-run-badge">first run</span>
             {% endif %}
         </h2>
         {% if latest_run %}
         <div class="briefing-meta">
-            Date: {{ latest_run.timestamp }} | New items: {{ latest_run.new_items_count }}
+            Date: {{ latest_run.timestamp }} | {{ latest_run.new_items_count }} new
         </div>
         {% if latest_items %}
         <div class="new-items">
