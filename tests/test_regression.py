@@ -1,5 +1,5 @@
 """
-Regression tests covering items 1-6 requested by the owner.
+Regression tests covering items 1-7 requested by the owner.
 """
 import sys
 from datetime import datetime, timezone, timedelta
@@ -7,8 +7,8 @@ from pathlib import Path
 import tempfile
 import pytest
 
-from app.db import init_db, get_db_path, get_runs, get_run, get_items_by_run, set_config
-from app.feed import ingest_feed, fetch_feed, get_feed_items, FEED_START_DATE
+from app.db import init_db, get_db_path, get_runs, get_run, get_items_by_run, set_config, get_conn
+from app.feed import ingest_feed, fetch_feed, get_feed_items, FEED_START_DATE, cleanup_stale_runs
 from app.ops import main as ops_main
 
 
@@ -139,8 +139,25 @@ async def test_regression_6_rollback_on_failure(temp_db, monkeypatch):
     with patch("app.feed.insert_items", side_effect=mock_fail_after_insert):
         res_fail = await ingest_feed(current_time=FEED_START_DATE)
         assert res_fail["status"] == "failed"
+        
+        with get_conn() as conn:
+            assert conn.execute("SELECT 1 FROM runs WHERE id=? AND status='failed'", (res_fail['run_id'],)).fetchone()
 
     res_good = await ingest_feed(current_time=FEED_START_DATE)
     assert res_good["status"] == "success"
     assert res_good["new_items_count"] == 3
 
+@pytest.mark.asyncio
+async def test_regression_7_cleanup_stale_runs(temp_db):
+    """7. Crash case: insert a 'running' run, call cleanup_stale_runs(), assert it becomes 'failed' with 'Orphaned run (likely crash)'."""
+    with get_conn() as conn:
+        run_id = conn.execute("INSERT INTO runs (timestamp, status, error, new_items_count, is_first_run) VALUES (?, 'running', NULL, 0, 0)", (datetime.now(timezone.utc),)).lastrowid
+        conn.commit()
+    
+    cleanup_stale_runs()
+    
+    with get_conn() as conn:
+        run = conn.execute("SELECT status, error FROM runs WHERE id=?", (run_id,)).fetchone()
+        assert run is not None, f"Run {run_id} not found"
+        assert run['status'] == 'failed'
+        assert run['error'] == 'Orphaned run (likely crash)'

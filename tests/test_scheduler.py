@@ -22,14 +22,12 @@ def test_scheduler_starts_and_stops():
     """
     Test that the scheduler is started and stopped with the app lifespan.
     """
-    # We use TestClient with a context manager to trigger lifespan
-    # We disable the actual loop execution by mocking scheduler_loop or env
-    with patch("app.scheduler.scheduler_loop", return_value=AsyncMock()) as mock_loop:
-        with TestClient(app):
-            # Lifespan should have called start_scheduler which calls asyncio.create_task(scheduler_loop())
-            # In sync TestClient, lifespan runs.
-            pass
-        # After exit, stop_scheduler should have been called.
+    with patch("app.main.start_scheduler") as mock_start:
+        with patch("app.main.stop_scheduler") as mock_stop:
+            with TestClient(app):
+                pass
+            mock_start.assert_called_once()
+            mock_stop.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_scheduler_tick_executes_ingest():
