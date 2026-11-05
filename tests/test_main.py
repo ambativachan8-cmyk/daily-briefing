@@ -5,7 +5,36 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 
-from app.main import app
+from app.main import app, _last_call, _run_now_lock
+from app.db import get_db_path, init_db
+
+
+@pytest.fixture(autouse=True)
+def reset_state():
+    """Reset global state and clear database before each test."""
+    # Clear rate limiter
+    _last_call.clear()
+    # Reset lock
+    import app.main
+    app.main._run_now_lock = False
+    
+    # Initialize database and clear tables
+    init_db()
+    db_path = get_db_path()
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    conn.execute("DELETE FROM runs")
+    conn.execute("DELETE FROM items")
+    conn.execute("DELETE FROM run_items")
+    conn.execute("DELETE FROM locks")
+    conn.commit()
+    conn.close()
+    
+    yield
+    
+    # Cleanup after test
+    _last_call.clear()
+    app.main._run_now_lock = False
 
 
 @pytest_asyncio.fixture
@@ -28,9 +57,120 @@ async def test_health_check(async_client):
 
 @pytest.mark.asyncio
 async def test_root_endpoint(async_client):
-    """Test the root endpoint."""
+    """Test the root endpoint returns HTML with briefing page structure."""
     response = await async_client.get("/")
     assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
+    html = response.text
+    assert "Daily Briefing" in html
+    assert "Latest Briefing" in html
+    assert "Run History" in html
+    assert "Run Now" in html
+
+
+@pytest.mark.asyncio
+async def test_root_endpoint_shows_no_runs_when_empty(async_client):
+    """Test root endpoint shows empty state when no runs exist."""
+    response = await async_client.get("/")
+    assert response.status_code == 200
+    html = response.text
+    assert "No runs recorded yet" in html
+
+
+@pytest.mark.asyncio
+async def test_run_now_endpoint(async_client):
+    """Test the run-now endpoint triggers ingestion and returns HTML."""
+    response = await async_client.post("/run-now")
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
+    assert "Daily Briefing" in response.text
+    assert "Latest Briefing" in response.text
+    
+    # Verify a run was created
+    runs_resp = await async_client.get("/runs")
+    runs_data = runs_resp.json()
+    assert len(runs_data["runs"]) == 1
+    run = runs_data["runs"][0]
+    assert run["status"] in ("success", "failed")
+    assert "id" in run
+    assert "new_items_count" in run
+    assert "timestamp" in run
+
+
+@pytest.mark.asyncio
+async def test_run_now_rate_limit(async_client):
+    """Test run-now endpoint rate limits."""
+    # First request should succeed
+    await async_client.post("/run-now")
+    
+    # Second request immediately should be rate limited
+    response = await async_client.post("/run-now")
+    assert response.status_code == 429
+    # Returns HTML page with rate limit message
+    assert "text/html" in response.headers.get("content-type", "")
+    assert "Rate limited" in response.text
+    assert "Try again" in response.text
+
+
+@pytest.mark.asyncio
+async def test_ingest_endpoint(async_client):
+    """Test the ingest endpoint."""
+    response = await async_client.post("/ingest")
+    assert response.status_code == 200
     data = response.json()
-    assert data["message"] == "Daily Briefing API"
-    assert data["version"] == "0.1.0"
+    assert "run_id" in data
+    assert "status" in data
+    assert data["status"] in ("success", "failed")
+    assert "new_items_count" in data
+    assert "timestamp" in data
+
+
+@pytest.mark.asyncio
+async def test_run_now_overlapping(async_client):
+    """Test run-now endpoint prevents overlapping runs."""
+    import app.main
+    app.main._run_now_lock = True
+    try:
+        response = await async_client.post("/run-now")
+        assert response.status_code == 409
+        assert "text/html" in response.headers.get("content-type", "")
+        assert "in progress" in response.text.lower()
+    finally:
+        app.main._run_now_lock = False
+
+
+@pytest.mark.asyncio
+async def test_runs_endpoint(async_client):
+    """Test the runs history endpoint."""
+    # Trigger a run first
+    await async_client.post("/ingest")
+    
+    response = await async_client.get("/runs")
+    assert response.status_code == 200
+    data = response.json()
+    assert "runs" in data
+    assert isinstance(data["runs"], list)
+    assert len(data["runs"]) > 0
+    run = data["runs"][0]
+    assert "id" in run
+    assert "timestamp" in run
+    assert "status" in run
+    assert "new_items_count" in run
+
+
+@pytest.mark.asyncio
+async def test_run_detail_endpoint(async_client):
+    """Test the run detail endpoint."""
+    # Trigger a run first
+    ingest_resp = await async_client.post("/ingest")
+    ingest_data = ingest_resp.json()
+    assert "run_id" in ingest_data, f"Ingest response missing run_id: {ingest_data}"
+    run_id = ingest_data["run_id"]
+    
+    response = await async_client.get(f"/runs/{run_id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert "run" in data
+    assert "items" in data
+    assert data["run"]["id"] == run_id
+    assert isinstance(data["items"], list)
