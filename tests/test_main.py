@@ -1,6 +1,4 @@
-"""
-Tests for the main FastAPI application.
-"""
+
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
@@ -40,4 +38,6 @@ async def test_run_now(async_client):
     """Test the run-now endpoint."""
     response = await async_client.post("/run-now")
     assert response.status_code == 200
-    assert "items" in response.json()
+    # Change "items" to "new_items"
+    assert "new_items" in response.json()
+
