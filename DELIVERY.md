@@ -1,7 +1,7 @@
 # Delivery report — Daily Briefing (Confer take-home #3)
 
 > **Status: in progress.** This file states only what has been verified; open items are
-> marked _open_. Last updated 2026-11-04 22:55 UTC.
+> marked _open_. Last updated 2026-11-05 08:05 UTC.
 
 | | |
 |---|---|
@@ -72,9 +72,9 @@ _Open: table finalised when the remaining tickets land._
 | Agent | Done so far |
 |---|---|
 | Hermes Manager | Split the brief into #1–#6 plus status issue #7. Released #2 after #1 merged. Re-queued #2 after the reviewer's rejection, rewrote its criteria to carry the brief's requirements, and corrected the dependencies of #5 and #6. |
-| OpenClaw Backend Builder | #1 scaffold (PR #8, merged). #2 feed and ingest (PR #9): reworked three times. |
-| Hermes Reviewer | Approved #1 after two reviews. Rejected PR #9 at `ea55954` after its prompt was hardened. Wrongly approved `28750bf` on a flash-lite model. |
-| OpenClaw Tester | Tested #1. Passed `ea55954` with a count inflated by a stray local file. |
+| OpenClaw Backend Builder | #1 scaffold (PR #8, merged). #2 feed and ingest (PR #9, merged as `b944788` after six agent commits): reworked after the reviewer's rejection and the owner's findings. It claimed fixes it had not made, and committed `venv/` once, then removed it. |
+| Hermes Reviewer | Approved #1 after two reviews. Rejected PR #9 at `ea55954` after its prompt was hardened. Wrongly approved `28750bf` on a flash-lite model. Approved the final head `9a8cfa4` with a shallow review. |
+| OpenClaw Tester | Tested #1. Passed `ea55954` with a count inflated by a stray local file. Passed `9a8cfa4` from a clean clone (41 tests, `git status --porcelain` empty). |
 | OpenClaw UI Builder | _Open: #3._ |
 
 ## 4. What broke, and how it was caught
@@ -104,7 +104,11 @@ ticket and corrected it.
 were not; a "non-public" fail switch was a public route. At `28750bf` a reviewer run on the weakest
 model approved in about a minute with the required regression tests missing. The operator overrode
 that approval and the reviewer's prompt now demands a row, a file:line and a named test for each open
-finding. _Open: final outcome of #2._
+finding. Further checks found `venv/` committed (about 400k lines) and a lock that made a second run
+wait instead of returning "busy". Head `9a8cfa4` fixed both, passed review and test, and passed the
+operator's clean-checkout probes. The human merged it as `b944788` on 2026-11-05 07:42 UTC. Even then
+the reviewer's comment skipped the per-finding rows its prompt requires, so the operator's probes carry
+most of the weight for this merge.
 
 **The dispatcher misread quota.** It treated a second 429 as daily exhaustion, so a model with quota
 left was written off until the next reset. A probe that answered 200 exposed it. A related bug paused
