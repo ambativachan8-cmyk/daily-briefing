@@ -6,7 +6,7 @@ import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 
 from app.main import app, _ingest_last_call, _run_now_last_call, _run_now_lock
-from app.db import get_db_path
+from app.db import get_db_path, init_db
 
 
 @pytest.fixture(autouse=True)
@@ -19,17 +19,17 @@ def reset_state():
     import app.main
     app.main._run_now_lock = False
     
-    # Clear database
+    # Initialize database and clear tables
+    init_db()
     db_path = get_db_path()
-    if db_path.exists():
-        import sqlite3
-        conn = sqlite3.connect(db_path)
-        conn.execute("DELETE FROM runs")
-        conn.execute("DELETE FROM items")
-        conn.execute("DELETE FROM run_items")
-        conn.execute("DELETE FROM locks")
-        conn.commit()
-        conn.close()
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    conn.execute("DELETE FROM runs")
+    conn.execute("DELETE FROM items")
+    conn.execute("DELETE FROM run_items")
+    conn.execute("DELETE FROM locks")
+    conn.commit()
+    conn.close()
     
     yield
     
