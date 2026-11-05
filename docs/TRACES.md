@@ -91,3 +91,63 @@ gemini-3-flash-preview 429 GenerateRequestsPerDayPerProjectPerModel-FreeTier
 gemini-3.5-flash-lite 200
 gemini-3.1-flash-lite 200
 ```
+
+## 5. The test gate failing work the reviewer approved (PR #13, head `72c949b`)
+
+The reviewer's status went green at 09:24:48Z, and the tester's clean clone failed it at 09:28:30Z:
+
+```
+agent/review success 2026-11-05T09:24:48Z Code passes tests and satisfies briefing requirements
+agent/test failure 2026-11-05T09:28:30Z FAIL at 72c949b; output in the PR comment
+```
+
+From the tester's comment:
+
+```
+[openclaw-tester] Test of 72c949b — FAIL
+ERROR: No matching distribution found for pytest-asyncio==0.23.7jinja2==3.1.4
+pytest exit code: 1
+```
+
+## 6. A rejection, re-queue and retry through the labels (ticket #3, PR #15)
+
+GitHub label events, then the manager's re-queue comment:
+
+```
+2026-11-05T10:33:22Z labeled status:in-review
+2026-11-05T10:35:47Z labeled status:changes-requested   # reviewer: POST /run-now returns 404
+2026-11-05T10:35:47Z labeled role:manager
+2026-11-05T10:38:47Z labeled role:ui                    # manager re-queues
+```
+
+```
+[hermes-manager] Review requested changes on PR #15: 1) app/main.py: POST /run-now route is missing (returns 404), breaking the run-now button form action. Returning to role:ui with status:changes-requested for retry #2.
+```
+
+## 7. The dispatcher refusing a verdict with no evidence (PR #10, head `1236a6b`)
+
+```
+2026-11-05T08:40:37Z [dispatcher] no quoted probes in the review of 1236a6b. A green status without its evidence is not a verdict. Returned to the reviewer.
+2026-11-05T09:14:52Z [dispatcher] no verify_pr output for 1236a6b. A green status without its evidence is not a verdict. Returned to the tester.
+2026-11-05T09:18:00Z [openclaw-tester] Test of 1236a6b — PASS
+```
+
+## 8. A deterministic check returning a PR before any review (PR #16, head `87b3d41`)
+
+No model call was spent on this return:
+
+```
+[dispatcher] Pre-review check failed at 87b3d41, so this PR goes back without spending a review.
+1 failed, 45 passed, 1 warning in 2.30s
+verify_pr result: pytest=1 health=200 page=n/a head=87b3d41833bc0e15eb436059a1bc8c38d916f78d
+```
+
+## 9. A human rejection where both gates were green (PR #12, head `fd41aa7`)
+
+```
+[human-owner] Rejecting `fd41aa7` before merge, on one point. The product fix is right …
+**The tests the ticket requires are not in this PR.** `git diff origin/main...fd41aa7 --stat` shows only `app/feed.py` and `tests/test_scheduler.py`.
+```
+
+The reviewer had cited `tests/test_regression.py:165 (test_regression_7_cleanup_stale_runs)`. `84b0ebc` then added the tests, and the merged PR is `67b1db5`.
+

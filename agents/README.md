@@ -20,15 +20,16 @@ Ticket flow and labels: [PROTOCOL.md](PROTOCOL.md). Router and runner:
 - **Google AI Studio, free tier.** Two keys in two separate projects: one for the Hermes
   agents, one for the OpenClaw agents. A live 429 from a Pro model reports quota ids ending
   `-FreeTier`, so these keys are not billing-enabled. Free-tier limits observed:
-  **5 requests/min and 20 requests/day per model per project**, plus frequent 503
-  "high demand" responses on the newest models. Primaries are spread across models so
-  agents do not drain the same per-model quota.
+  **20 requests/day per project on flash and 500/day on flash-lite**, with per-minute limits on
+  top and frequent 503 "high demand" responses on the newest models. Buckets are shared
+  across names: `3.5-flash` draws on `3.6-flash`, and `3.7-flash` on `3.8-flash` (read from the
+  429's `quotaDimensions`, 2026-11-05). Each chain lists a bucket once.
 - **OpenRouter, `:free` models.** The key's spending limit is **$0** and `is_free_tier` is
   true, so it cannot incur charges; free models are capped at 50 requests/day per account.
 
-Every model listed above answered a live request through the agent's own runtime or the
-provider API before it was assigned. Gemini 3.7/3.8 Flash and Gemma 4 were tried and left
-out (503/500 at the time).
+Gemma 4 is left out: its 16,000 input tokens/min is below one agent prompt (about 25k tokens).
+Omni and 3.1 Pro have no free quota, and the 2.5 models return 404. The current chains are in
+[../scripts/configure_models.sh](../scripts/configure_models.sh); the table above records the first plan.
 
 ## Rate-limit handling
 
