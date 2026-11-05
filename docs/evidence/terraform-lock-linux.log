@@ -1,0 +1,15 @@
+terraform_1.16.6_linux_amd64.zip: OK
+Terraform v1.16.6
+Linux x86_64
+25b77d5
+== BEFORE: documented 'terraform init' with the committed lock file on Linux
+exit=1
+Error: Failed to install provider
+registry.terraform.io/hashicorp/aws 6.71.0 doesn't match any of the checksums
+== regenerate lock for all common platforms
+Success! Terraform has updated the lock file.
+ 1 file changed, 20 insertions(+)
+== AFTER: same init with the new lock file
+exit=0
+Terraform has been successfully initialized!
+Success! The configuration is valid.

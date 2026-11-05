@@ -1,6 +1,7 @@
 # Token usage report
 
-Generated 2026-11-05T16:41:46Z from `runs.jsonl` (176 run attempts).
+Generated 2026-11-05T22:18:28Z from [`docs/evidence/runs.jsonl`](evidence/runs.jsonl) (176 run attempts).
+Rebuild it yourself: `bash scripts/token_report.sh docs/evidence/runs.jsonl /tmp/report.md` (needs `jq`).
 Counts are reported by the runtimes themselves (Hermes `--usage-file`, OpenClaw
 `--json` agent meta). **Actual cost: $0** — every key is free tier. The "list-price
 estimate" column is Hermes' own estimate of what the same tokens would cost on a paid
@@ -64,6 +65,43 @@ differently: OpenClaw's input excludes them and Hermes' input includes them.
 | planning | 5 | 228028 | 316709 | 546766 |
 | retries | 154 | 6560865 | 20195911 | 26527929 |
 | review/test | 12 | 1148443 | 3272914 | 4423332 |
+
+Fresh plus cache-read can exceed the total on the retries row: some failed Hermes runs report
+input tokens but a total of 0. The totals are the runtimes' own figures and are not adjusted.
+
+## By phase, per agent and per model
+
+Total reported tokens. "Repeat runs" are successful runs after an agent's first on the same ticket
+(re-reviews of a new head, rework after a send-back). "Failed attempts" ended in a quota or provider
+error or a non-zero exit. The "retries" row above is these two columns added together, so it mixes
+normal rework with waste.
+
+| agent | Planning | Coding | Review/test | Repeat runs | Failed attempts | Total |
+|---|---:|---:|---:|---:|---:|---:|
+| backend | 0 | 2284530 | 0 | 4939710 | 7603178 | 14827418 |
+| manager | 546766 | 0 | 0 | 1007883 | 0 | 1554649 |
+| reviewer | 0 | 0 | 3076869 | 5443474 | 561 | 8520904 |
+| tester | 0 | 0 | 1346463 | 1450770 | 1135591 | 3932824 |
+| ui | 0 | 123394 | 0 | 1206349 | 3740413 | 5070156 |
+
+| model | Planning | Coding | Review/test | Repeat runs | Failed attempts | Total |
+|---|---:|---:|---:|---:|---:|---:|
+| gemini-3-flash-preview | 58637 | 144271 | 192877 | 364526 | 1211517 | 1971828 |
+| gemini-3.1-flash-lite | 0 | 280956 | 596795 | 3364115 | 4452729 | 8694595 |
+| gemini-3.5-flash | 0 | 0 | 0 | 0 | 564268 | 564268 |
+| gemini-3.5-flash-lite | 304442 | 0 | 1332466 | 3500611 | 6102838 | 11240357 |
+| gemini-3.6-flash | 0 | 0 | 0 | 197426 | 147830 | 345256 |
+| nemotron-3-ultra-550b-a55b | 0 | 0 | 0 | 547991 | 0 | 547991 |
+| nemotron-3-ultra-550b-a55b:free | 0 | 1019786 | 1177425 | 348734 | 561 | 2546506 |
+| nvidia/nemotron-3-ultra-550b-a55b | 0 | 0 | 0 | 0 | 0 | 0 |
+| nvidia/nemotron-3-ultra-550b-a55b:free | 0 | 962911 | 0 | 3481428 | 0 | 4444339 |
+| z-ai/glm-5.3-flash | 183687 | 0 | 1123769 | 2243355 | 0 | 3550811 |
+
+## Not counted anywhere in this report
+
+The operator's own model use (Claude Code and Codex, used for planning, setup, gate scripts, audits and
+review findings) is outside this log and was not measured. It was a strong model doing real work, so
+these tables understate the true cost of the delivery. See DELIVERY.md, section 1.
 
 ## Not in the counts above: OpenClaw on NVIDIA (estimate)
 

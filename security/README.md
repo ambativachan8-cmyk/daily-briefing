@@ -83,7 +83,8 @@ Recorded results for the delivered commit are in [results/](results/).
 
 - **Builders can read their own keys.** A builder has a shell as `agent`, so its shell can read that account's model
   keys and GitHub token. It has no route to the control plane, production or the gates. Those keys are free-tier and
-  the token cannot merge or set gates, but a leak would still need rotating.
+  the token cannot set gates, but it needs Contents write, which is also what a merge needs. Assume it can merge a PR whose gates
+  are green. A leak would need rotating.
 - **Prompt injection is reduced, not removed.** The reviewer and tester have no tools, so an injected instruction can
   at most swing their verdict. That is why receipts and the owner's merge sit behind them. The manager and builders keep
   their tools, and although they are given filtered threads they could still choose to read other comments.
@@ -91,7 +92,14 @@ Recorded results for the delivered commit are in [results/](results/).
   written to recognise and fail only that test could evade it, but it would then have to pass the runner's own black-box
   checks and the owner's reading of its diff.
 - **The receipt covers the PR head, not the merge result.** Branch protection does not require branches to be up to date.
-- **One GitHub account.** Status authorship cannot be told apart on GitHub. The protection is the token's permissions.
+- **One GitHub account.** Status authorship cannot be told apart on GitHub. The protection is the token's permissions. The same
+  applies to comments and tickets: the filters that keep outsiders out match the owner's login, which is also the login the agents post
+  under. So a builder with a shell can post a comment that reaches the reviewer's prompt, or create a ticket that routes. Outsiders
+  are blocked; agents are not. Receipts and the owner's merge sit behind this. Only separate GitHub identities would fix it.
+- **Merged scripts become control-plane code.** `dispatch.sh` updates its own checkout with `git pull` before each run, and that
+  checkout runs as `ubuntu`, which has sudo. No gate treats `scripts/` specially, so the owner must read any PR that touches it with
+  that in mind.
+- **The gates do not bind the owner's account.** `enforce_admins` is off. PR #20 merged with neither gate.
 - **Stub-based fixtures.** Fork and outsider scenarios use the stub `gh`, because one account cannot fork its own repository
   or act as an outsider. Its field names were checked against real output, and the routing selectors were also run read-only
   against GitHub.

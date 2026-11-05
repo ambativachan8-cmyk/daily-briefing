@@ -1,0 +1,26 @@
+KILLED | dedup off: every item new | 1 failed, 1 passed in 2.19s
+KILLED | id from title not feed id/link | 1 failed in 2.01s
+KILLED | first-run mark never set | 1 failed in 2.06s
+KILLED | failed run saved as success | 1 failed, 5 passed in 2.81s
+KILLED | fail switch never consumed | 1 failed, 31 passed in 4.36s
+KILLED | rate limit off | 1 failed, 7 passed in 3.18s
+SURVIVED | rate limit weak (5s) | 61 passed in 6.96s
+KILLED | Run now button does nothing | 1 failed in 2.00s
+HUNG | overlap flag never checked on run-now | timeout 60s
+KILLED | latest run is oldest | 1 failed, 1 passed in 2.16s
+KILLED | db lock always granted | 1 failed, 54 passed in 12.10s
+KILLED | stale cleanup no-op | 1 failed, 56 passed in 6.69s
+KILLED | scheduler never started | 1 failed, 57 passed in 6.84s
+KILLED | scheduler dies after first error | 1 failed, 60 passed in 7.34s
+KILLED | page lists old items too | 1 failed, 3 passed in 2.55s
+KILLED | page drops item link | 1 failed in 2.02s
+SURVIVED | page shows no date | 61 passed in 6.79s
+KILLED | history marks failure as tick | 1 failed, 5 passed in 3.09s
+KILLED | history hides new count | 1 failed, 6 passed in 2.87s
+SURVIVED | first-run badge dropped from the briefing heading | 61 passed in 6.65s
+SURVIVED | rate limit weak (1s) | 61 passed in 6.78s
+SURVIVED | /ingest not rate limited | 61 passed in 6.65s
+SURVIVED | scheduler stops after first tick | 61 passed in 6.86s
+SURVIVED | scheduler ignores its interval | 61 passed in 6.75s
+SURVIVED | title rendered unescaped (XSS) | 61 passed in 6.83s
+mutants=25 survived=8 hung=1 notapplied=0

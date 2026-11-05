@@ -10,9 +10,26 @@ runtimes and the ticket protocol, and reviews/merges. See:
 - [agents/](agents/) — agent roster, prompts, sanitized configs, ticket protocol
 - [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) — the requirement the agents work from
 - [infra/](infra/) — Terraform for the single VM
-- [DELIVERY.md](DELIVERY.md) — delivery report: team, ticket flow, what broke, tokens, how to reproduce
+- [DELIVERY.md](DELIVERY.md) — delivery report: team, ticket flow, what broke, tokens, how to reproduce. **Start here.**
+- [docs/RELEASE_EVIDENCE.md](docs/RELEASE_EVIDENCE.md) — what was verified, reported by agents, simulated and untested
 - [security/](security/) — the security boundary of the agent workflow, and the attack fixtures that test it
 - Live: https://13-55-31-171.sslip.io
+
+## Run it locally
+
+Use a fresh clone: the test suite empties `data/briefing.db` in the checkout it runs in.
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+```
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+```bash
+rm -f data/briefing.db && .venv/bin/uvicorn app.main:app --port 8000
+```
 
 ## Operations
 

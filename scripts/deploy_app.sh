@@ -73,6 +73,8 @@ stage() {  # <sha>
   rm -rf "$dir"; mkdir -p "$dir"
   git -C "$MIRROR" archive --format=tar "$sha" | tar -x -C "$dir"
   [ -f "$dir/requirements.txt" ] && [ -f "$dir/app/main.py" ] || { log "$sha has no app to deploy"; rm -rf "$dir"; return 1; }
+  # A release's data/ is the production database, and the test suite empties the database it finds.
+  rm -rf "$dir/tests"
   python3 -m venv "$dir/.venv"
   if ! "$dir/.venv/bin/pip" install -q -r "$dir/requirements.txt"; then
     log "dependency install failed for ${sha:0:7}; nothing changed, the current release keeps serving"

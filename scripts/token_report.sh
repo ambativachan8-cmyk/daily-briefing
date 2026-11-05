@@ -9,7 +9,8 @@ OUT="${2:-$HOME/agents/_src/docs/TOKEN_REPORT.md}"
 {
   echo "# Token usage report"
   echo
-  echo "Generated $(date -u +%FT%TZ) from \`runs.jsonl\` ($(wc -l < "$IN") run attempts)."
+  echo "Generated $(date -u +%FT%TZ) from [\`docs/evidence/runs.jsonl\`](evidence/runs.jsonl) ($(wc -l < "$IN") run attempts)."
+  echo "Rebuild it yourself: \`bash scripts/token_report.sh docs/evidence/runs.jsonl /tmp/report.md\` (needs \`jq\`)."
   echo "Counts are reported by the runtimes themselves (Hermes \`--usage-file\`, OpenClaw"
   echo "\`--json\` agent meta). **Actual cost: \$0** — every key is free tier. The \"list-price"
   echo "estimate\" column is Hermes' own estimate of what the same tokens would cost on a paid"
@@ -57,6 +58,39 @@ OUT="${2:-$HOME/agents/_src/docs/TOKEN_REPORT.md}"
       | .rows += [$r + {phase: $phase, fresh: ($r | fresh)}])
     | .rows | group_by(.phase) | .[] |
     "| \(.[0].phase) | \(length) | \(map(.fresh) | add) | \(map(.cache_read_tokens // 0) | add) | \(map(.total_tokens // 0) | add) |"' "$IN"
+  echo
+  echo "Fresh plus cache-read can exceed the total on the retries row: some failed Hermes runs report"
+  echo "input tokens but a total of 0. The totals are the runtimes' own figures and are not adjusted."
+  echo
+  echo "## By phase, per agent and per model"
+  echo
+  echo "Total reported tokens. \"Repeat runs\" are successful runs after an agent's first on the same ticket"
+  echo "(re-reviews of a new head, rework after a send-back). \"Failed attempts\" ended in a quota or provider"
+  echo "error or a non-zero exit. The \"retries\" row above is these two columns added together, so it mixes"
+  echo "normal rework with waste."
+  echo
+  for key in agent model; do
+    echo "| $key | Planning | Coding | Review/test | Repeat runs | Failed attempts | Total |"
+    echo "|---|---:|---:|---:|---:|---:|---:|"
+    jq -rs --arg key "$key" 'def ok: (.status // "ok") == "ok" and (.exit // 0) == 0;
+      map(.model |= ((. // "?") | sub("^(google|openrouter|nvidia)/"; "")))
+      | reduce .[] as $r ({seen: {}, rows: []};
+          ($r.agent + "/" + ($r.issue // "")) as $k
+          | (if ($r | ok) | not then "failed attempts" elif .seen[$k] then "repeat runs"
+             else {manager: "planning", backend: "coding", ui: "coding", reviewer: "review/test", tester: "review/test"}[$r.agent] end) as $phase
+          | (if ($r | ok) then .seen[$k] = true else . end)
+          | .rows += [$r + {phase: $phase}])
+      | .rows | group_by(.[$key]) | .[] | . as $g
+      | "| \(.[0][$key]) | " + (["planning", "coding", "review/test", "repeat runs", "failed attempts"]
+          | map(. as $p | $g | map(select(.phase == $p) | .total_tokens // 0) | add // 0 | tostring) | join(" | "))
+        + " | \($g | map(.total_tokens // 0) | add) |"' "$IN"
+    echo
+  done
+  echo "## Not counted anywhere in this report"
+  echo
+  echo "The operator's own model use (Claude Code and Codex, used for planning, setup, gate scripts, audits and"
+  echo "review findings) is outside this log and was not measured. It was a strong model doing real work, so"
+  echo "these tables understate the true cost of the delivery. See DELIVERY.md, section 1."
   echo
   echo "## Not in the counts above: OpenClaw on NVIDIA (estimate)"
   echo
