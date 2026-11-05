@@ -35,6 +35,17 @@ if [ "${1:-}" != "--enable" ]; then
 fi
 
 [ ! -e "$HOLD" ] || { echo "REFUSED: $HOLD exists. Removing it is the owner's approval to run the agents." >&2; exit 3; }
+# The boundary must really be in place. The agents' token must not be able to set the gates, and the control
+# plane must run merged code: dispatch.sh updates itself with `git pull`, which needs a branch, not a pinned commit.
+SRC="$HOME/agents/_src"
+bash "$(cd "$(dirname "$0")" && pwd)/init_secrets.sh" verify || { echo "REFUSED: fix the tokens first." >&2; exit 3; }
+git -C "$SRC" fetch -q origin main
+git -C "$SRC" cat-file -e origin/main:scripts/gate_lib.sh 2>/dev/null || { echo "REFUSED: the security fix is not on main yet." >&2; exit 3; }
+git -C "$SRC" checkout -q main
+git -C "$SRC" pull -q --ff-only
+sudo -n -u agent -H git -C /home/agent/agents/_src fetch -q origin main
+sudo -n -u agent -H git -C /home/agent/agents/_src checkout -q main
+sudo -n -u agent -H git -C /home/agent/agents/_src pull -q --ff-only
 rm -f "$D/dispatch.timer"   # also clears a mask, which is a symlink at this path
 cat > "$D/dispatch.timer" <<'EOF'
 [Unit]

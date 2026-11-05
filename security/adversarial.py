@@ -668,6 +668,50 @@ def s_route_empty():
            f"agent launched: {runs.splitlines()[0][:70] if runs else 'none'}")
 
 
+def s_legit_routes():
+    """Control: blocking must not break the normal team: builders, the manager and the approval prompt still work."""
+    if MODE == "baseline":
+        return
+    problems = []
+
+    def case(name, issues, prs, want):
+        w = new_world(name, [issue(1, ["status:done", "type:feature"], state="CLOSED"), *issues], prs, reply="DONE")
+        r = run_script(w, "dispatch.sh", "next")
+        runs = agent_runs(w)
+        if want not in runs:
+            problems.append(f"{name}: wanted '{want}', got '{runs[:60]}' rc={r.returncode}")
+        return w
+
+    case("legit_ready", [issue(10, ["status:ready", "role:backend", "type:feature"])], [], "openclaw agent --agent backend")
+    case("legit_sentback", [issue(11, ["status:changes-requested", "role:ui", "type:feature"])], [], "openclaw agent --agent ui")
+    case("legit_testsuite", [issue(12, ["status:in-progress", "role:tester", "type:feature"])], [], "openclaw agent --agent tester ")
+    case("legit_triage", [issue(13, ["status:test-failed", "role:manager", "type:bug"])], [], "hermes -p manager")
+    case("legit_held", [issue(14, ["role:backend", "type:feature"])], [], "hermes -p manager")
+    # A ticket waiting for the owner tells the owner once and does not hold up other work.
+    sha = SHAS["main"]
+    w = new_world("legit_waiting", [issue(15, ["status:in-review", "role:reviewer", "type:feature"]),
+                                    issue(16, ["status:ready", "role:backend", "type:feature"])],
+                  [pr(61, sha, [15])], reply="DONE")
+    run_script(w, "dispatch.sh", "next")
+    run_script(w, "dispatch.sh", "next")
+    asks = [x for x in writes(w) if x["kind"] == "pr_comment" and "waiting for the owner" in x["body"]]
+    if len(asks) != 1 or sha not in asks[0]["body"]:
+        problems.append(f"approval prompt posted {len(asks)} times")
+    if "--agent backend" not in agent_runs(w):
+        problems.append("waiting ticket held up other work")
+    if "hermes -p reviewer" in agent_runs(w) or executed(w, sha):
+        problems.append("reviewer ran, or code executed, without approval")
+    # Explicit planning stays available to the owner.
+    w = new_world("legit_plan", [], [], reply="PLANNED")
+    run_script(w, "dispatch.sh", "manager")
+    if "hermes -p manager" not in agent_runs(w):
+        problems.append("explicit planning did not start the manager")
+    ok = not problems
+    RESULTS.append({"scenario": "legit_routes", "attack": "control: normal team routes", "outcome": "PASSED" if ok else "FAILED", "ok": ok,
+                    "detail": "; ".join(problems) or "builders, tester, manager triage and release, one approval prompt, explicit planning"})
+    print(f"[{'ok' if ok else 'UNEXPECTED'}] legit_routes: {RESULTS[-1]['outcome']} - {RESULTS[-1]['detail']}", flush=True)
+
+
 SCENARIOS = [
     ("fork_ahead", s_fork_ahead), ("forged_pass", s_forged_pass), ("exit_forge", s_exit_forge),
     ("missing_html", s_missing_html), ("outsider_comments", s_outsider_comments),
@@ -675,7 +719,7 @@ SCENARIOS = [
     ("candidate_access", s_candidate_access), ("receipt_integrity", s_receipt_integrity),
     ("unapproved", s_unapproved), ("head_moves", s_head_moves), ("ambiguous", s_ambiguous),
     ("wrong_base", s_wrong_base), ("evil_requirements", s_evil_requirements),
-    ("verdict_channel", s_verdict_channel), ("honest_control", s_honest_control),
+    ("verdict_channel", s_verdict_channel), ("honest_control", s_honest_control), ("legit_routes", s_legit_routes),
 ]
 
 

@@ -128,6 +128,7 @@ fetch_wheels() {
   local rc="${PIPESTATUS[0]}"
   say "wheel download exit status: $rc"
   sudo -n chown -hR root:root "$WHEELS"
+  sudo -n chmod -R a+rX,go-w "$WHEELS"
   return "$rc"
 }
 

@@ -69,6 +69,10 @@ bash security/deploy_proof.sh fixed              # failure with the old release 
 bash security/agent_boundary.sh --token          # real attempts as the `agent` user against the real host
 ```
 
+```bash
+bash security/fresh_setup_check.sh               # secret-directory permissions, gh login order, no value in output
+```
+
 Each `adversarial.py` run writes `results.json` under `~/security-sim/<run>/`, beside every transcript and receipt.
 The exit status is non-zero if any attack has an unexpected outcome, including a baseline attack that does not land:
 a fixture that cannot reproduce the bug proves nothing about the fix.
