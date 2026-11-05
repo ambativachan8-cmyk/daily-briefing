@@ -148,9 +148,11 @@ Telling agents to try harder had not worked, so these checks moved out of the mo
 - The dispatcher runs `verify_pr.sh` before any review and returns a failing PR with no model call. It
   also refuses a green status that lacks its evidence on that head.
 
-A tester run dropped from 19 model calls to about 4, and the first pre-review check returned a PR in 31
-seconds. These scripts are operator tooling: they judge the agents' code and contain no product code.
-They also went wrong once, when an over-strict pattern parked a good review.
+The clear gain is real evidence. Tester call counts did not fall reliably (3 to 28 calls per run,
+against 19 before), but a failing PR now returns in under a minute with no model call. These scripts
+are operator tooling: they judge the agents' code and contain no product code. They also went wrong
+once, when an over-strict pattern parked a good review. The page checks passed end to end against a
+throwaway fixture (not in this repository), but have not yet judged a real agent page.
 
 **Stale setup and fragmented work on #3.** The UI builder's clone had never fetched `main`, because it
 first ran two days after setup. Its first PR was a stub with unrelated history, which was partly our
@@ -195,8 +197,9 @@ was requests, not tokens.
 - **A stronger reviewer model.** Flash-lite repeatedly approved bad work. A gate is only as good as the
   model behind it, so we would pay for or reserve review capacity. We chose to let review fall back to
   lite under deadline pressure, with plain-code checks and a human check behind it.
-- **Start with deterministic gates.** `verify_pr.sh` should have existed from the first ticket. It found
-  in seconds what three review cycles had missed, and it would have saved much of the quota.
+- **Start with deterministic gates.** `verify_pr.sh` should have existed from the first ticket. Failures
+  like the broken requirements and the app that would not start need no model to find, and catching
+  them first would have saved quota.
 - **Plan quota as a budget.** We assumed the 20/day limit applied per model name. Measuring the shared
   buckets and the lite limit on day one would have changed the chains and the pacing.
 - **Separate GitHub identities per agent** so GitHub's own review approval could be the gate.
