@@ -79,10 +79,12 @@ async def test_root_endpoint_shows_no_runs_when_empty(async_client):
 
 @pytest.mark.asyncio
 async def test_run_now_endpoint(async_client):
-    """Test the run-now endpoint triggers ingestion and redirects."""
-    response = await async_client.post("/run-now", follow_redirects=False)
-    assert response.status_code == 303  # Redirect to /
-    assert response.headers.get("location") == "/"
+    """Test the run-now endpoint triggers ingestion and returns HTML."""
+    response = await async_client.post("/run-now")
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
+    assert "Daily Briefing" in response.text
+    assert "Latest Briefing" in response.text
     
     # Verify a run was created
     runs_resp = await async_client.get("/runs")

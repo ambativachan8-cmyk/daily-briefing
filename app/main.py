@@ -194,9 +194,23 @@ async def run_now_endpoint(request: Request):
     _run_now_lock = True
     try:
         await ingest_feed()
-        # Redirect to root to show updated page
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url="/", status_code=303)
+        # Return updated page directly (no redirect) so plain form POST works
+        runs = get_runs(limit=100)
+        latest_run = dict(runs[0]) if runs else None
+        latest_items = []
+        if latest_run:
+            items = get_items_by_run(latest_run["id"])
+            latest_items = [dict(item) for item in items]
+        
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {
+                "runs": [dict(run) for run in runs],
+                "latest_run": latest_run,
+                "latest_items": latest_items,
+            },
+        )
     finally:
         _run_now_lock = False
 
