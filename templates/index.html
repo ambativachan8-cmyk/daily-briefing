@@ -118,37 +118,5 @@
         <p class="no-items">No runs recorded yet</p>
         {% endif %}
     </div>
-
-    <script>
-        document.getElementById('run-now-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const btn = document.getElementById('run-now-btn');
-            const msg = document.getElementById('rate-limit-msg');
-            btn.disabled = true;
-            msg.style.display = 'none';
-            
-            try {
-                const response = await fetch('/run-now', { method: 'POST' });
-                const data = await response.json();
-                if (response.ok) {
-                    location.reload();
-                } else if (response.status === 429) {
-                    msg.textContent = `Rate limited. Try again in ${data.retry_after_seconds}s.`;
-                    msg.style.display = 'block';
-                } else if (response.status === 409) {
-                    msg.textContent = data.error || 'Another run is in progress.';
-                    msg.style.display = 'block';
-                } else {
-                    msg.textContent = data.error || 'Run failed.';
-                    msg.style.display = 'block';
-                }
-            } catch (err) {
-                msg.textContent = 'Network error.';
-                msg.style.display = 'block';
-            } finally {
-                btn.disabled = false;
-            }
-        });
-    </script>
 </body>
 </html>
