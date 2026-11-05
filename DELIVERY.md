@@ -1,17 +1,21 @@
 # Delivery report — Daily Briefing (Confer take-home #3)
 
-> **Status: complete and live.** This file states only what has been verified. Last updated 2026-11-05 16:45 UTC.
-> Every required item works: scheduled and manual runs, stored history, stable-ID dedup, a dated public
+> **Status: the product is live. Agent automation is paused pending the owner's decision.** This file states only what
+> has been verified. Last updated 2026-11-05 21:10 UTC.
+> Every required product item works: scheduled and manual runs, stored history, stable-ID dedup, a dated public
 > briefing, failure and recovery, and A1–A8. Section 6 lists the limits. The team needed more human
-> correction than we wanted, and section 4 says where.
+> correction than we wanted, and section 4 says where. **An external audit then found that the agent workflow
+> had no real security boundary.** That is reproduced and fixed in code, and section 4 opens with it. The
+> dispatcher stays stopped until the owner supplies a narrower agent token and approves restarting it.
 
 | | |
 |---|---|
-| Live URL | https://13-55-31-171.sslip.io (fallback `http://13.55.31.171`). Redeploys on every merge that changes the app. Try: Run Now adds a row showing 0 new; a second click within a minute is refused. Operator fail switch: `python -m app.ops fail-next`. |
+| Live URL | https://13-55-31-171.sslip.io (fallback `http://13.55.31.171`). Merges redeploy through a staged release once automation is back on. Try: Run Now adds a row showing 0 new; a second click within a minute is refused. Operator fail switch: `python -m app.ops fail-next`. |
 | Repository | https://github.com/ambativachan8-cmyk/daily-briefing |
 | Ticket trail | [Issues](https://github.com/ambativachan8-cmyk/daily-briefing/issues?q=is%3Aissue) · [Pull requests](https://github.com/ambativachan8-cmyk/daily-briefing/pulls?q=is%3Apr) |
 | Token report | [docs/TOKEN_REPORT.md](docs/TOKEN_REPORT.md), generated from the run log (per agent, model and phase). See "Where the tokens went" below. |
 | Traces | [docs/TRACES.md](docs/TRACES.md) |
+| Security | [security/README.md](security/README.md): the boundary, the attack fixtures, and how to re-run them. Recorded results: [security/results/](security/results/) |
 | Spend | $0 on model APIs (all free tier). VM on AWS Free-plan credits (about $3.10/day) |
 
 ## 1. The team
@@ -21,12 +25,12 @@
 | Hermes Manager | Hermes Agent v0.22.5, profile `manager` | Orchestrator: writes tickets, releases dependencies, re-queues send-backs | NVIDIA `z-ai/glm-5.3-flash`, then NVIDIA Nemotron, Gemini, OpenRouter (planning ran on `gemini-3.5-flash`) | `terminal`, `file`, `todo`; `gh`, `git` |
 | OpenClaw Backend Builder | OpenClaw 2026.10.9, agent `backend` | Ingestion, storage, dedup, scheduler | NVIDIA `nvidia/nemotron-3-ultra-550b-a55b`, then NVIDIA GLM, Gemini flash and lite, OpenRouter (most of its work ran on Gemini) | `coding` profile; `gh`, `git` |
 | OpenClaw UI Builder | OpenClaw 2026.10.9, agent `ui` | Public page, history, Run now | NVIDIA Nemotron, then NVIDIA GLM, Gemini flash and lite, OpenRouter | `coding` profile; `gh`, `git` |
-| Hermes Reviewer | Hermes Agent v0.22.5, profile `reviewer` | Reviews each PR against ticket and brief; sets required status `agent/review` | NVIDIA Nemotron, then NVIDIA GLM, Gemini flash and lite, OpenRouter | `terminal`, `file`, `todo`; `gh`, `git` |
-| OpenClaw Tester | OpenClaw 2026.10.9, agent `tester` | Independent tests; sets required status `agent/test`; owns the acceptance suite | NVIDIA GLM, then NVIDIA Nemotron, Gemini lite, OpenRouter | `coding` profile; `gh`, `git` |
+| Hermes Reviewer | Hermes Agent v0.22.5, profile `reviewer` | Reviews each PR against ticket and brief; its final line decides required status `agent/review` | NVIDIA Nemotron, then NVIDIA GLM, Gemini flash and lite, OpenRouter | `todo` only, since the security fix: no shell, no files, evidence in the prompt |
+| OpenClaw Tester | OpenClaw 2026.10.9, agents `tester` and `tester-judge` | Owns the acceptance suite; as `tester-judge`, its final line decides required status `agent/test` | NVIDIA GLM, then NVIDIA Nemotron, Gemini lite, OpenRouter | `coding` profile for its own test PRs; none as `tester-judge` |
 
 Full chains and how each was verified: [agents/README.md](agents/README.md). Configs and prompts:
 [agents/](agents/). The team has five agents because the suggested ops-builder role is covered by
-scripts in `scripts/`, which need no model.
+scripts in `scripts/`, which need no model. Since the security fix they all run as the unprivileged `agent` account.
 
 **Model choice, honestly.** The brief asks for strong models on planning and review and cheaper ones
 on routine work. Everything we can reach is free-tier. Measured from Gemini's own 429 details, flash
@@ -54,23 +58,26 @@ flowchart TD
   R -- no --> H[Held, no status label]
   H --> R
   R -- yes --> BD[OpenClaw builder: branch, commits, PR]
-  BD --> RV[Hermes Reviewer]
+  BD --> OA[Owner approves the exact head over SSH]
+  OA --> SB[Control plane runs it in the sandbox, writes a receipt]
+  SB -- fail: agent/test=failure --> BD
+  SB -- pass --> RV[Hermes Reviewer judges diff and receipt, no tools]
   RV -- reject: agent/review=failure --> M2[Manager re-queues with reason]
   M2 --> BD
-  RV -- approve: agent/review=success --> T[OpenClaw Tester, clean clone]
-  T -- fail: agent/test=failure, bug ticket --> M2
-  T -- pass: agent/test=success --> D[Dispatcher posts merge evidence for the exact head]
+  RV -- approve: agent/review=success --> T[OpenClaw tester-judge, no tools]
+  T -- fail: agent/test=failure --> M2
+  T -- pass: agent/test=success --> D[Control plane posts the merge decision with the receipt]
   D --> HM[Human checks and merges]
   HM -- rejects --> M2
-  HM -- merge --> CD[main auto-deploys to the VM]
+  HM -- merge --> CD[Staged release, health check, then swap]
 ```
 
-- `scripts/dispatch.sh next` runs every 10 minutes from a systemd timer and picks one agent by plain
-  label matching: no model decides who works next. One agent runs at a time (`flock`).
+- `scripts/dispatch.sh next` runs every 2 minutes from a systemd timer when automation is on, and picks one agent by
+  plain label matching over managed tickets only: no model decides who works next. One agent runs at a time (`flock`).
 - Agents act only through `git` and `gh`. Each has its own clone and git author, and a pre-push hook
   blocks `main`. Labels move through `scripts/ticket.sh`.
 - Branch protection on `main` requires `agent/review` and `agent/test` on the head commit, so a new
-  commit needs both gates again.
+  commit needs both gates again. Only the control plane can set them: the agents' token cannot.
 
 Full protocol: [agents/PROTOCOL.md](agents/PROTOCOL.md).
 
@@ -85,6 +92,55 @@ Full protocol: [agents/PROTOCOL.md](agents/PROTOCOL.md).
 | OpenClaw UI Builder | #3 public page: PRs #13, #15 and #16, all rejected and closed. It opened a stub with a fake `/run-now`, a JavaScript-only page, a page that crashed, a page that would not start, and then a route with no page. Then PR #18, merged as `d8203d9` after three more rounds on NVIDIA models: the owner rejected `8bccd97` and the reviewer rejected `5c3c4e5`. |
 
 ## 4. What broke, and how it was caught
+
+### The security failure Codex found
+
+After delivery, an independent Codex audit of `main` at `e2a83ce` reported that the dispatcher had no trustworthy
+boundary for running candidate code. We paused the dispatcher first (timer masked, service held, public app untouched),
+then reproduced each finding against that exact commit in a disposable environment, before changing anything.
+
+**The audit was right, and the root cause went further than its list.** The agents ran as `ubuntu`, which has passwordless
+sudo, using a token allowed to set the two required gates. So any shell an agent ran could read every credential and forge
+any verdict or status. A public repository means an outsider could also start that chain. The evidence-checking we wrote
+in section 4 below was real work, but it was checking text that anyone could write. Our earlier statement that the gate
+was "protocol, per-clone hooks and branch protection" understated this.
+
+| Attack, on the audited commit | Reproduced at `e2a83ce` | After the fix |
+|---|---|---|
+| A fork PR ranks ahead of the authorized PR | The fork's code ran, the authorized PR's did not | Forks are ignored. Approving one is refused. Running one directly is refused. |
+| A candidate prints a PASS line while its tests fail | `verify_pr` exit 0 | Forged lines are quoted in the margin. Exit status 1 comes from systemd. FAIL receipt. |
+| A `conftest.py` forces pytest's exit status to 0 | `verify_pr` exit 0 | A failing canary test under a random name must be reported as a failure. FAIL receipt. |
+| `/` returns JSON, so the page checks are skipped | `verify_pr` exit 0 | No HTML page is a failure. |
+| An outsider's comments impersonate reviewer and tester | The merge decision was announced on them | No gate reads a comment. Without a receipt there is no decision. |
+| A planted comment hides the merge decision | Decision suppressed | Decision still announced. |
+| An outsider's issue, a parked `blocked` ticket, or an unmanaged note | An agent started | Only managed tickets route. No agent starts. |
+| A candidate reads secrets, app state and logs, and writes verdicts | A simulated secret leaked, and verdict files were overwritten | All 34 attempts denied. Nothing leaked, nothing written. |
+| A candidate overwrites the cached verdict of a different, failing PR | The failing PR then passed | Not possible: the sandbox cannot see verdicts, and receipts hash their transcripts. |
+| An unapproved head, or a head newer than the approval | Executed | Refused before anything runs. |
+| The head or base changes after approval, or during a run | Executed or passed | Refused or failed: the check is live, and repeated after the run. |
+| Two PRs claim one ticket, or one PR claims two | One was picked anyway | No PR is selected. |
+| `requirements.txt` with `-r`, `--index-url`, a symlink or a direct URL | pip processed it | Refused before pip runs, from the git object, so a symlink is only a name. |
+| A dependency install fails during deploy | The serving tree moved to the bad commit, and the retry did nothing | Separate staged release, old one serves, retry works, rollback works. |
+
+**What changed.** Three accounts now separate the roles, and no new service or paid tool was added: `ubuntu` (owner, control
+plane, production), `agent` (the runtimes, no sudo) and `candidate` (PR code, only in a transient systemd sandbox). No candidate
+code runs unless the owner approved that one same-repository PR, its base and its full head SHA, and this is checked against
+GitHub live at execution time. A PASS comes from systemd exit statuses and the runner's own HTTP checks, and is recorded in a
+receipt bound to the SHA. The reviewer and tester now judge with no tools at all, and only the control plane can set the gates.
+`git log` shows no change to `app/`, `tests/`, `templates/` or `requirements.txt`, so no product code moved.
+
+**Exact-head evidence.** The proofs ran from a clean clone of `75efbb3ba8b215c2e88a11dd29c232b16704afc9` on the real VM and sandbox: see
+[security/results/](security/results/). Against the audited commit 17 of 17 attacks landed. Against the fix 19 attacks were blocked
+and 2 controls passed. The attacks must land on the audited commit or the run counts as a failure, so they cannot pass by being
+unable to detect the bug. An honest approved PR reached a merge decision, and the normal team routes still work. GitHub was a stub in
+these runs, because one account cannot fork its own repository or act as an outsider. One check failed on its first run because of a
+fault in the check itself. That is recorded there, and it passed at `8d04045`, which changes only that check.
+
+**What is not proven yet.** No real agent ticket has gone through the new workflow, and the runner has not run against a real open
+GitHub PR. The agents' narrower token does not exist yet, so its inability to set statuses or bypass branch protection is untested.
+
+**One thing the fixtures found in our first fix.** With nothing else open, an outsider's issue still made the new router
+plan the project. Planning is now the owner's explicit command.
 
 **The gates passed bad work, twice, and the human review caught it.** This is the most useful thing
 this delivery showed.
@@ -203,9 +259,13 @@ As of 2026-11-05 16:41 UTC (176 attempts), counts as reported by the runtimes:
 | Review and test (first successful run) | 1,148,443 | 3,272,914 | 4,423,332 |
 | Retries (failed attempts, rework, re-review) | 6,560,865 | 20,195,911 | 26,527,929 |
 
-Those total about 33.9M. OpenClaw reports zero tokens for NVIDIA's API, so about 7.5M more is an
-**estimate** (UI builder about 6.3M, tester about 1.2M): 291 real turns at the measured average of
-25.7k tokens per turn. Per-agent and per-model tables are in the report.
+**Measured:** those four rows, about 33.9M, are counts reported by the runtimes themselves, including all of Hermes on
+NVIDIA. **Estimated:** OpenClaw reports zero tokens for NVIDIA's API (the report shows 0 for those runs), so about 7.5M
+more is our estimate, not a measurement (UI builder about 6.3M, tester about 1.2M): 291 real turns at the measured average
+of 25.7k tokens per turn. Treat the true total as about 41M, of which about 18% is estimated. Per-agent and per-model tables
+are in the report. The security work added four small tool-access runs outside that log: one Hermes run measured at 10,768
+tokens, one Hermes run that hit a stalled NVIDIA model and was stopped with no count, and two OpenClaw runs on NVIDIA whose tokens
+were again reported as zero.
 
 **In plain words: about 78% of reported tokens went to retries, not first attempts,** and the NVIDIA
 rework on #3 would raise that share. Most of it is rework after send-backs and quota-interrupted turns.
@@ -224,6 +284,8 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
 - **Plan quota as a budget.** We assumed the 20/day limit applied per model name. Measuring the shared
   buckets and the lite limit on day one would have changed the chains and the pacing.
 - **Separate GitHub identities per agent** so GitHub's own review approval could be the gate.
+- **Design the boundary first.** A public repository plus model-driven shells with sudo was unsafe from the first run. Every
+  later gate rested on it.
 - **Treat a builder's "fixed" as a claim.** Have the dispatcher require a named failing-then-passing
   test before a send-back can return to review. The evidence checks cover quoted output, but not yet a
   required test named in a ticket: the human caught that on PR #12.
@@ -237,8 +299,14 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
   each comment. GitHub refuses formal "approve" reviews (self-approval), so the gate is two required
   commit statuses.
 - **Gate strength.** `enforce_admins` is off so the human can merge, and operator changes to scripts
-  and prompts went straight to `main`. No operator commit touches `app/` or `tests/`. The gate is
-  protocol, per-clone hooks and branch protection, not cryptographic separation.
+  and prompts went straight to `main` until this fix, which is a PR. No operator commit touches `app/` or `tests/`. The
+  gate is OS accounts, token permissions and branch protection, not cryptographic separation. Whether the agents' token can
+  bypass protection without Administration permission must be tested when that token exists.
+- **Security limits.** Builders can read their own model keys and GitHub token from their shell. Prompt injection is reduced,
+  not removed. A candidate written to target the canary could evade it, though it must still pass the runner's own HTTP checks
+  and the owner's reading of the diff. The receipt covers the PR head, not the merged result. Details are in
+  [security/README.md](security/README.md).
+- **Automation is paused.** It needs a narrower agent token, which only the owner can create, and the owner's decision.
 - **Human findings guided the rework.** Review findings on #2, #3 and #11 came from the operator as well
   as the reviewer. They state outcomes and reproductions, and the code is the builders'. The human side
   caught more serious defects than the reviewer did on the lite-model days, so the gates alone were
@@ -271,19 +339,26 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
 ```bash
 cd infra && cp terraform.tfvars.example terraform.tfvars   # set admin_cidr, key path
 terraform init && terraform apply
-scp agents/agents.env.example ubuntu@<ip>:~/.secrets/agents.env   # then fill in free-tier keys (NVIDIA first)
 ssh ubuntu@<ip> 'git clone https://github.com/ambativachan8-cmyk/daily-briefing ~/agents/_src &&
-  bash ~/agents/_src/scripts/install_all.sh'
+  bash ~/agents/_src/scripts/init_secrets.sh prepare'      # creates ~/.secrets as 0700, which scp needs
+scp agents/agents.env.example ubuntu@<ip>:~/.secrets/agents.env   # then fill in free-tier keys and both GitHub tokens
+ssh ubuntu@<ip> 'bash ~/agents/_src/scripts/install_all.sh'
 ```
 
-Agent dashboards stay on loopback; reach them with the tunnel from `terraform output`.
+`agents/agents.env.example` lists the two fine-grained GitHub tokens and their permissions. The agents' token has no Commit
+statuses permission, and setup refuses to continue if both tokens are the same. Then, to confirm without printing a value:
 
-**Tested on 2026-11-05 on a fresh VM**, with separate Terraform state, then destroyed. `terraform apply`
-plus the unmodified `install_all.sh` took about 8 minutes (exit 0): five agent identities, the gateway,
-dispatch timer and app services active, the app's first run stored (8 new), and `/health` 200 over public
-HTTP and HTTPS.
+```bash
+ssh ubuntu@<ip> 'bash ~/agents/_src/scripts/init_secrets.sh verify'
+```
 
-Limits of that test: it used dummy model keys and a stubbed `gh auth`, so that a second dispatcher could
-not touch the real repository. So no agent ran a model there, and a real install needs real free-tier
-keys. The installers are not pinned: that VM got OpenClaw 2026.11.1 and Hermes v0.22.7, while the team
-ran 2026.10.9 and v0.22.5.
+Automation stays off until the owner removes the hold file and runs `install_dispatch_timer.sh --enable`. Plan a new project
+with an explicit `dispatch.sh manager`. Agent dashboards stay on loopback; reach them with the tunnel from `terraform output`.
+
+**What has been tested.** On 2026-11-05 the earlier scripts ran end to end on a fresh VM (`terraform apply` plus `install_all.sh`,
+about 8 minutes), with dummy model keys and a stubbed `gh auth`, then that VM was destroyed. **The setup as changed by the security
+fix has not been run on a fresh EC2 instance.** Its parts were tested separately: `security/fresh_setup_check.sh` covers secret-directory
+permissions, the order of the GitHub login steps and that no value reaches output or a command line, on a new home directory with
+simulated tokens; the runtime installers ran as a disposable user with no sudo, on a host where Node was already present; and the real
+VM was moved to these accounts. The Node step in `install_gate.sh` has not been run. The
+installers are not pinned, so a new VM can get newer runtimes than the team used.

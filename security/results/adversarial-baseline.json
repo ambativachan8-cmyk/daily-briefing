@@ -1,0 +1,129 @@
+{
+ "mode": "baseline",
+ "baseline": "e2a83ce6cf4190091dbc7bdb91434730b4d29084",
+ "world": "baseline-20261105T210235Z",
+ "seconds": 216,
+ "expected": 17,
+ "unexpected": 0,
+ "results": [
+  {
+   "scenario": "fork_ahead",
+   "attack": "fork PR ranked ahead of the authorized PR",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "fork head executed=True; authorized head executed=False"
+  },
+  {
+   "scenario": "forged_pass",
+   "attack": "candidate prints a PASS line while its tests fail",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "verify_pr rc=0; receipt verdict=none"
+  },
+  {
+   "scenario": "exit_forge",
+   "attack": "conftest forces pytest's exit status to 0",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "verify_pr rc=0; canary_exit=n/a"
+  },
+  {
+   "scenario": "missing_html",
+   "attack": "`/` returns JSON, so the page checks are skipped",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "verify_pr rc=0; page=n/a (see output)"
+  },
+  {
+   "scenario": "outsider_comments",
+   "attack": "outsider comments impersonate reviewer/tester and suppress the decision",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "merge decision announced on outsider evidence=True; planted comment suppressed the decision=True"
+  },
+  {
+   "scenario": "route_outsider_issue",
+   "attack": "outsider opens an unlabelled issue with instructions",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "agent launched: hermes -p manager --in baseline-20261105T210"
+  },
+  {
+   "scenario": "route_blocked_review",
+   "attack": "ticket parked `blocked` while in review",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "agent launched: hermes -p reviewer --in baseline-20261105T21"
+  },
+  {
+   "scenario": "route_blocked_ready",
+   "attack": "ticket parked `blocked` while ready for a builder",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "agent launched: openclaw agent --agent backend --session-key agent:backend:issue-6:non"
+  },
+  {
+   "scenario": "route_blocked_held",
+   "attack": "ticket parked `blocked` with no status",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "agent launched: hermes -p manager --in baseline-20261105T210"
+  },
+  {
+   "scenario": "route_unmanaged",
+   "attack": "owner note with no labels at all",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "agent launched: hermes -p manager --in baseline-20261105T210"
+  },
+  {
+   "scenario": "route_empty_repo",
+   "attack": "outsider issue on an empty repository triggers planning",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "agent launched: hermes -p manager --in baseline-20261105T210"
+  },
+  {
+   "scenario": "candidate_access",
+   "attack": "candidate reads secrets/app state/verdicts and writes verdicts",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "11 probes ran, 8 succeeded, simulated secret leaked=True :: PROBE read baseline-20261105T210235Z/worlds/candidate_access/hom; PROBE read baseline-20261105T210235Z/worlds/candidate_access/hom; PROBE read baseline-20261105T210235Z/worlds/candidate_access/hom; PROBE write baseline-20261105T210235Z/worlds/candidate_access/ho; PROBE write baseline-20261105T210235Z/worlds/candidate_access/ho; PROBE write baseline-20261105T210235Z/worlds/candidate_access/ho"
+  },
+  {
+   "scenario": "transcript_poison",
+   "attack": "candidate overwrites the cached verdict of another PR",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "verify_pr of the failing victim rc=0 after the poisoning"
+  },
+  {
+   "scenario": "unapproved_revision",
+   "attack": "no approval, then an approval for an older head",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "no-approval rc=0; stale-approval rc=0; new head executed=True"
+  },
+  {
+   "scenario": "ambiguous_pr",
+   "attack": "two PRs claim one ticket; one PR claims two tickets",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "two-PRs executed/routed=True; multi-close executed/routed=True"
+  },
+  {
+   "scenario": "wrong_base",
+   "attack": "PR targets, or is retargeted to, an unexpected base",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "approval rc=0; verify rc=0; retargeted rc=0; executed=True"
+  },
+  {
+   "scenario": "evil_requirements",
+   "attack": "requirements.txt with -r, --index-url, a symlink, or a direct URL",
+   "outcome": "ATTACK LANDED",
+   "ok": true,
+   "detail": "#52 rc=1 pytest=n/a; #53 rc=1 pytest=n/a; #54 rc=1 pytest=n/a; #55 rc=1 pytest=n/a"
+  }
+ ]
+}

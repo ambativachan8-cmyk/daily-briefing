@@ -11,6 +11,9 @@ they live in `~/.secrets/agents.env` on the VM (git-ignored, not in this repo).
 | OpenClaw UI Builder | OpenClaw 2026.10.9, agent `ui` | Builder (page/history/Run-now) | [openclaw/ui/AGENTS.md](openclaw/ui/AGENTS.md) | `google/gemini-3-flash-preview` → `google/gemini-3.5-flash` → `google/gemini-3.6-flash` → `google/gemini-3.5-flash-lite` → `google/gemini-3.1-flash-lite` → OpenRouter Nemotron-3-Ultra `:free` |
 | OpenClaw Tester | OpenClaw 2026.10.9, agent `tester` | Tester | [openclaw/tester/AGENTS.md](openclaw/tester/AGENTS.md) | `google/gemini-3.6-flash` → `google/gemini-3-flash-preview` → `google/gemini-3.5-flash-lite` → `google/gemini-3.1-flash-lite` → OpenRouter Nemotron-3-Ultra `:free` |
 
+All five run as the unprivileged `agent` account, not as the control plane, and the tester gives verdicts as `tester-judge`,
+which has no tools ([security/README.md](../security/README.md)). The table above records the first model plan.
+
 Ticket flow and labels: [PROTOCOL.md](PROTOCOL.md). Router and runner:
 [../scripts/dispatch.sh](../scripts/dispatch.sh). Model wiring:
 [../scripts/configure_models.sh](../scripts/configure_models.sh).

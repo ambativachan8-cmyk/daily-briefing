@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""Disposable stand-in for the GitHub CLI, used only by security/adversarial.py.
+
+It serves pull requests, issues, comments and commit statuses from JSON files in $GH_STUB_STATE and
+logs every write, so the real control-plane scripts can be attacked without touching GitHub.
+Field names match the real `gh --json` output (checked against this repository's PR #19).
+"""
+import json
+import os
+import subprocess
+import sys
+
+STATE = os.environ["GH_STUB_STATE"]
+argv = sys.argv[1:]
+
+
+def load(name):
+    with open(os.path.join(STATE, name + ".json")) as f:
+        return json.load(f)
+
+
+def save(name, value):
+    with open(os.path.join(STATE, name + ".json"), "w") as f:
+        json.dump(value, f, indent=1)
+
+
+def flag(name, default=None):
+    if name in argv:
+        i = argv.index(name)
+        return argv[i + 1] if i + 1 < len(argv) else default
+    return default
+
+
+def log_write(kind, **fields):
+    with open(os.path.join(STATE, "writes.log"), "a") as f:
+        f.write(json.dumps({"kind": kind, **fields}) + "\n")
+
+
+def emit(value):
+    fields = flag("--json")
+    if fields:
+        keep = fields.split(",")
+        if isinstance(value, list):
+            value = [{k: v.get(k) for k in keep} for v in value]
+        else:
+            value = {k: value.get(k) for k in keep}
+    jq = flag("--jq")
+    if jq:
+        r = subprocess.run(["jq", "-r", jq], input=json.dumps(value), text=True, capture_output=True)
+        sys.stdout.write(r.stdout)
+        if r.returncode:
+            sys.stderr.write(r.stderr)
+        sys.exit(r.returncode)
+    print(json.dumps(value))
+
+
+def tick_head_moves(prs):
+    """A PR can be scripted to move its head after N reads, to prove the re-check after a run."""
+    changed = False
+    for pr in prs:
+        if pr.get("moveAfterReads") is not None:
+            pr["moveAfterReads"] -= 1
+            changed = True
+            if pr["moveAfterReads"] < 0:
+                pr["headRefOid"] = pr["moveTo"]
+                pr["moveAfterReads"] = None
+    if changed:
+        save("prs", prs)
+
+
+def by_number(items, n):
+    for item in items:
+        if str(item["number"]) == str(n):
+            return item
+    sys.stderr.write(f"no such item {n}\n")
+    sys.exit(1)
+
+
+def body_from_args():
+    if flag("--body-file"):
+        with open(flag("--body-file")) as f:
+            return f.read()
+    return flag("--body", "")
+
+
+cmd = argv[:2]
+if cmd == ["auth", "status"]:
+    print("stub gh")
+elif cmd == ["issue", "list"]:
+    issues = load("issues")
+    state = (flag("--state", "open")).upper()
+    issues = [i for i in issues if i["state"] == state]
+    label = flag("--label")
+    if label:
+        issues = [i for i in issues if any(l["name"] == label for l in i["labels"])]
+    emit(sorted(issues, key=lambda i: -i["number"]))
+elif cmd == ["issue", "view"]:
+    emit(by_number(load("issues"), argv[2]))
+elif cmd == ["issue", "edit"]:
+    issues = load("issues")
+    item = by_number(issues, argv[2])
+    names = [l["name"] for l in item["labels"]]
+    i = 3
+    while i < len(argv):
+        if argv[i] == "--remove-label":
+            names = [n for n in names if n != argv[i + 1]]
+            i += 2
+        elif argv[i] == "--add-label":
+            for n in argv[i + 1].split(","):
+                if n not in names:
+                    names.append(n)
+            i += 2
+        else:
+            i += 1
+    item["labels"] = [{"name": n} for n in names]
+    save("issues", issues)
+    log_write("issue_edit", number=int(argv[2]), labels=names)
+elif cmd == ["issue", "comment"]:
+    log_write("issue_comment", number=int(argv[2]), body=body_from_args())
+elif cmd == ["label", "list"]:
+    emit([{"name": n} for n in load("labels")])
+elif cmd == ["pr", "list"]:
+    prs = load("prs")
+    tick_head_moves(prs)
+    state = (flag("--state", "open")).upper()
+    emit(sorted([p for p in prs if p["state"] == state], key=lambda p: -p["number"]))
+elif cmd == ["pr", "view"]:
+    prs = load("prs")
+    tick_head_moves(prs)
+    emit(by_number(prs, argv[2]))
+elif cmd == ["pr", "diff"]:
+    print(by_number(load("prs"), argv[2]).get("diff", "diff --git a/x b/x\n"))
+elif cmd == ["pr", "comment"]:
+    prs = load("prs")
+    body = body_from_args()
+    pr = by_number(prs, argv[2])
+    pr["comments"].append({"author": {"login": "control-plane-under-test"}, "body": body})
+    save("prs", prs)
+    log_write("pr_comment", number=int(argv[2]), body=body)
+elif cmd[:1] == ["api"]:
+    path = [a for a in argv[1:] if a.startswith("repos/")][0]
+    parts = path.split("?")[0].split("/")
+    statuses = load("statuses")
+    if parts[3:4] == ["statuses"]:
+        sha = parts[4]
+        fields = dict(argv[i + 1].split("=", 1) for i, a in enumerate(argv) if a == "-f")
+        entries = statuses.setdefault(sha, [])
+        entries.append({
+            "context": fields["context"], "state": fields["state"],
+            "description": fields.get("description", ""), "id": 1000 + len(entries),
+            "created_at": f"2026-11-06T00:{len(entries):02d}:00Z",
+        })
+        save("statuses", statuses)
+        log_write("status", sha=sha, context=fields["context"], state=fields["state"])
+    elif parts[3:4] == ["commits"] and parts[5:6] == ["statuses"]:
+        rows = statuses.get(parts[4], [])
+        jq = flag("--jq")
+        r = subprocess.run(["jq", "-r", jq or "."], input=json.dumps(rows), text=True, capture_output=True)
+        sys.stdout.write(r.stdout)
+    else:
+        sys.stderr.write(f"stub gh: unsupported api path {path}\n")
+        sys.exit(1)
+else:
+    sys.stderr.write(f"stub gh: unsupported command {argv}\n")
+    sys.exit(1)

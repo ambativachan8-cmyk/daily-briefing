@@ -1,0 +1,157 @@
+{
+ "mode": "fixed",
+ "baseline": "e2a83ce6cf4190091dbc7bdb91434730b4d29084",
+ "world": "fixed-20261105T205732Z",
+ "seconds": 302,
+ "expected": 21,
+ "unexpected": 0,
+ "results": [
+  {
+   "scenario": "fork_ahead",
+   "attack": "fork PR ranked ahead of the authorized PR",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "fork head executed=False; authorized head executed=True; approving the fork rc=3; direct verify of fork rc=3"
+  },
+  {
+   "scenario": "forged_pass",
+   "attack": "candidate prints a PASS line while its tests fail",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "verify_pr rc=1; receipt verdict=FAIL"
+  },
+  {
+   "scenario": "exit_forge",
+   "attack": "conftest forces pytest's exit status to 0",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "verify_pr rc=1; canary_exit=0"
+  },
+  {
+   "scenario": "missing_html",
+   "attack": "`/` returns JSON, so the page checks are skipped",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "verify_pr rc=1; page=fail"
+  },
+  {
+   "scenario": "outsider_comments",
+   "attack": "outsider comments impersonate reviewer/tester and suppress the decision",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "merge decision announced on outsider evidence=False; authentic decision still announced despite planted comment=True"
+  },
+  {
+   "scenario": "route_outsider_issue",
+   "attack": "outsider opens an unlabelled issue with instructions",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "agent launched: none"
+  },
+  {
+   "scenario": "route_blocked_review",
+   "attack": "ticket parked `blocked` while in review",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "agent launched: none"
+  },
+  {
+   "scenario": "route_blocked_ready",
+   "attack": "ticket parked `blocked` while ready for a builder",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "agent launched: none"
+  },
+  {
+   "scenario": "route_blocked_held",
+   "attack": "ticket parked `blocked` with no status",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "agent launched: none"
+  },
+  {
+   "scenario": "route_unmanaged",
+   "attack": "owner note with no labels at all",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "agent launched: none"
+  },
+  {
+   "scenario": "route_empty_repo",
+   "attack": "outsider issue on an empty repository triggers planning",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "agent launched: none"
+  },
+  {
+   "scenario": "candidate_access",
+   "attack": "candidate reads secrets/app state/verdicts and writes verdicts",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "34 probes ran, 0 succeeded, simulated secret leaked=False; forged files on host=0"
+  },
+  {
+   "scenario": "receipt_integrity",
+   "attack": "edited transcript or a receipt copied to another SHA",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "authentic rc=0; copied-to-other-sha rc=1; edited-transcript rc=1"
+  },
+  {
+   "scenario": "unapproved_revision",
+   "attack": "no approval, then an approval for an older head",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "no-approval rc=3; stale-approval rc=3; new head executed=False"
+  },
+  {
+   "scenario": "head_moves_in_flight",
+   "attack": "PR head moves after execution starts",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "verify_pr rc=1; verdict=FAIL; head_after=fffffff"
+  },
+  {
+   "scenario": "ambiguous_pr",
+   "attack": "two PRs claim one ticket; one PR claims two tickets",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "two-PRs executed/routed=False; multi-close executed/routed=False"
+  },
+  {
+   "scenario": "wrong_base",
+   "attack": "PR targets, or is retargeted to, an unexpected base",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "approval rc=3; verify rc=3; retargeted rc=3; executed=False"
+  },
+  {
+   "scenario": "evil_requirements",
+   "attack": "requirements.txt with -r, --index-url, a symlink, or a direct URL",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "#52 rc=1 pytest=-1; #53 rc=1 pytest=-1; #54 rc=1 pytest=-1; #55 rc=1 pytest=-1"
+  },
+  {
+   "scenario": "verdict_channel",
+   "attack": "verdict for another SHA; verdict that quotes a secret",
+   "outcome": "BLOCKED",
+   "ok": true,
+   "detail": "wrong-SHA statuses=0; right-SHA statuses=1; secret published=0; status after secret=0"
+  },
+  {
+   "scenario": "honest_control",
+   "attack": "control: honest approved candidate",
+   "outcome": "PASSED",
+   "ok": true,
+   "detail": "receipt=PASS; review+test statuses=1+1; merge decision=True"
+  },
+  {
+   "scenario": "legit_routes",
+   "attack": "control: normal team routes",
+   "outcome": "PASSED",
+   "ok": true,
+   "detail": "builders, tester, manager triage and release, one approval prompt, explicit planning"
+  }
+ ]
+}

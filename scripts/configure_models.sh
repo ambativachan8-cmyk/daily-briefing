@@ -12,9 +12,16 @@ SECRETS="$HOME/.secrets/agents.env"
 set -a; . "$SECRETS"; set +a
 OR_FALLBACK="nvidia/nemotron-3-ultra-550b-a55b:free"
 
-# gh (and git push, via `gh auth setup-git`) for every agent. Hermes strips
-# secrets from tool subprocess env, so the token lives in gh's own 600 store.
-printf '%s\n' "$GH_TOKEN" | env -u GH_TOKEN gh auth login --with-token --hostname github.com
+# gh (and git push, via `gh auth setup-git`) for every agent. Hermes strips secrets from tool subprocess
+# env, so the token lives in gh's own 600 store. This runs as the `agent` account with AGENT_GH_TOKEN (see
+# init_secrets.sh), which cannot set commit statuses. Without one the agents simply cannot reach GitHub.
+if [ -n "${GH_TOKEN:-}" ]; then
+  printf '%s\n' "$GH_TOKEN" | env -u GH_TOKEN gh auth login --with-token --hostname github.com
+  env -u GH_TOKEN gh auth setup-git
+  env -u GH_TOKEN gh auth status >/dev/null && echo "agent account: gh authenticated"
+else
+  echo "agent account: no GitHub token configured"
+fi
 
 # ---- Hermes: manager, reviewer (Gemini key "HERMES") --------------------------
 # Free tier is 5 req/min per model: chain other Gemini models before OpenRouter
@@ -109,6 +116,8 @@ cat > /tmp/openclaw-models.json5 <<EOF
   backend: { model: $(model_json "${BACKEND[@]}") },
   ui:      { model: $(model_json "${UI[@]}") },
   tester:  { model: $(model_json "${TESTER[@]}") },
+  // Judges a sandboxed run from evidence given in the prompt. It must not be able to run anything.
+  "tester-judge": { model: $(model_json "${TESTER[@]}"), tools: { profile: "minimal", deny: ["*"], exec: { security: "deny" } } },
 } } }
 EOF
 openclaw config patch --file /tmp/openclaw-models.json5
@@ -117,4 +126,4 @@ systemctl --user restart openclaw-gateway.service 2>/dev/null || openclaw gatewa
 
 echo "== models"
 for id in manager reviewer; do echo "hermes/$id: $(hermes -p "$id" config get model.default)"; done
-for id in backend ui tester; do echo "openclaw/$id: $(openclaw config get "agents.entries.$id.model" 2>/dev/null | tr -d '\n ')"; done
+for id in backend ui tester tester-judge; do echo "openclaw/$id: $(openclaw config get "agents.entries.$id.model" 2>/dev/null | tr -d '\n ')"; done

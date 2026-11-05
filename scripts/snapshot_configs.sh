@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copies each agent's live runtime config into agents/<runtime>/<id>/ with secrets removed.
-# Run on the VM inside a clone; review the diff before committing.
+# Run on the VM as the `agent` account inside a clone; review the diff before committing.
 set -euo pipefail
 OUT="${1:-$HOME/agents/_src/agents}"
 redact() {

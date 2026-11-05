@@ -1,0 +1,27 @@
+== a fresh VM has no ~/.secrets
+  PROVEN  check stops and names the next step
+  PROVEN  prepare creates ~/.secrets as 0700
+  PROVEN  check reports the missing file
+== permissions a careless copy leaves behind
+  PROVEN  file and directory modes are corrected
+  PROVEN  a missing agent token is reported by name, with rc 2
+  PROVEN  no value in the output
+== the two tokens must differ
+  PROVEN  the same token for both is refused
+== install: control login, git helper, then the agent's own file
+  PROVEN  install succeeds
+  PROVEN  the control token goes to gh on stdin
+  PROVEN  GH_TOKEN is unset for the login, which gh requires
+  PROVEN  login precedes setup-git (the old order left git unauthenticated)
+  PROVEN  no token on any gh command line
+  PROVEN  no token in the output
+  PROVEN  the agent's file is 0600 in a 0700 directory
+  PROVEN  the agent receives its own token as GH_TOKEN
+  PROVEN  the control token does not reach the agent
+  PROVEN  model keys reach the agent
+== automation stays off until the owner decides
+  PROVEN  a fresh install sets the hold and writes no timer
+  PROVEN  --enable is refused while the hold exists
+  PROVEN  --enable is refused without a separate agent token
+
+fresh setup check: 0 failed

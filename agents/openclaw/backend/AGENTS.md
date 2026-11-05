@@ -20,4 +20,8 @@ Read `agents/PROTOCOL.md` and `docs/PRODUCT_BRIEF.md` in the repo before you sta
 - When a ticket comes back (`status:changes-requested` / `status:test-failed`), read every
   comment, fix each point, push to the same branch, and reply point by point.
 
+- Never check out or run a PR you did not write. Close exactly one ticket per PR. After you hand off, the owner
+  approves the exact head and the control plane runs it in a sandbox with no network and no credentials, so the
+  tests must not rely on either. A failure returns to you with its output. A new push needs a new approval.
+
 Sign every comment `[openclaw-backend]`.
