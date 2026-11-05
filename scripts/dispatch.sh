@@ -84,7 +84,7 @@ prompt_for() {
     reviewer)
       echo "Issue #$n is in review; its PR is #${pr:-?} in $REPO, head commit $head. Free-tier quota allows about 6 model calls, so chain shell commands. First command, all at once: git fetch and check out exactly that commit (a verdict about any other commit is void); gh issue view $n --repo $REPO --comments; gh pr view ${pr:-?} --repo $REPO --comments; gh pr diff ${pr:-?} --repo $REPO; ~/agents/_src/scripts/verify_pr.sh ${pr:-?}. That script gives you real test output and HTTP responses for the 'Tests run' row. Then run your own probes in one command, and quote each command and result in the 'Own probes' row: a review with an empty row is void. Review as your SOUL.md says: write the evidence table to a file and post it with gh pr comment --body-file (never --body, because the shell blanks anything in backticks), then set the agent/review commit status on the PR head and move the ticket with ticket.sh. Finish with one line: REVIEWED #$n APPROVED|CHANGES_REQUESTED <PR url>.";;
     backend|ui|tester-build)
-      echo "Work ticket #$n. Free-tier quota allows about 15 model calls for this ticket, so read only what you need, write whole files in one step, and chain shell commands (tests, commit, push, PR, ticket.sh) into one. Read AGENTS.md in your workspace and daily-briefing/agents/PROTOCOL.md, then run: gh issue view $n --repo $REPO --comments${pr:+ and gh pr view $pr --repo $REPO --comments}. If it was sent back, address every numbered point in the latest review/test comments and the manager's and human owner's notes, on the same branch and PR. Work inside ./daily-briefing. Finish with one line: DONE #$n <PR url> or BLOCKED #$n <reason>.";;
+      echo "Work ticket #$n. Free-tier quota allows about 15 model calls for this ticket, so read only what you need, write whole files in one step, and chain shell commands (tests, commit, push, PR, ticket.sh) into one. Read AGENTS.md in your workspace and daily-briefing/agents/PROTOCOL.md, then run: gh issue view $n --repo $REPO --comments${pr:+ and gh pr view $pr --repo $REPO --comments}. If it was sent back, address every numbered point in the latest review/test comments and the manager's and human owner's notes, on the same branch and PR. Work inside ./daily-briefing. After you push, run ~/agents/_src/scripts/verify_pr.sh <your PR number>: it tests a clean checkout and, for the public page, lists anything MISSING against the brief. Fix what it lists and push again. Hand off with ticket.sh only when it exits 0: a failing PR returns to you without a review. Finish with one line: DONE #$n <PR url> or BLOCKED #$n <reason>.";;
     tester)
       # status:testing = verify someone else's PR; any other state = the tester's own ticket
       if [ "$(gh issue view "$n" --repo "$REPO" --json labels --jq '[.labels[].name] | index("status:testing") != null')" != "true" ]; then
@@ -340,6 +340,25 @@ for id in backend ui tester; do cp "$SRC/agents/openclaw/$id/AGENTS.md" "$HOME/a
 
 labels_of() { [ -n "$1" ] && gh issue view "$1" --repo "$REPO" --json labels --jq '[.labels[].name] | sort | join(",")' || true; }
 before="$(labels_of "$n")"
+
+# Plain code before any model: a PR that fails its deterministic checks goes straight back to its
+# builder, and spends no review calls. After four such returns it waits for the human.
+if [ "$agent" = reviewer ] && [ -n "$n" ] && [ -n "$(pr_for "$n")" ]; then
+  pr="$(pr_for "$n")"; report="$(mktemp)"
+  if ! "$SRC/scripts/verify_pr.sh" "$pr" > "$report" 2>&1; then
+    read -r sha branch <<<"$(gh pr view "$pr" --repo "$REPO" --json headRefOid,headRefName --jq '.headRefOid + " " + .headRefName')"
+    role="$(cut -d/ -f2 <<<"$branch")"
+    body="$(mktemp)"
+    { echo "[dispatcher] Pre-review check failed at ${sha:0:7}, so this PR goes back without spending a review. Run \`~/agents/_src/scripts/verify_pr.sh $pr\` yourself after your next push; hand off only when it exits 0."
+      echo; echo '```'; grep -E 'MISSING|^verify_pr result|passed|failed|^ERROR' "$report" | cut -c1-300 | tail -n 40; echo '```'; } > "$body"
+    gh pr comment "$pr" --repo "$REPO" --body-file "$body" >/dev/null
+    "$SRC/scripts/ticket.sh" move "$n" changes-requested "$role" >/dev/null
+    returns="$(gh pr view "$pr" --repo "$REPO" --json comments --jq '[.comments[].body | select(startswith("[dispatcher] Pre-review check failed"))] | length')"
+    [ "$returns" -lt 4 ] || gh issue edit "$n" --repo "$REPO" --add-label blocked >/dev/null
+    rm -f "$report" "$body"; echo "pre-review check failed for PR #$pr; returned #$n to $role (return $returns)"; exit 0
+  fi
+  rm -f "$report"
+fi
 
 # A fresh ticket starts from current main. The UI builder's clone was two days old when it first
 # ran, so it saw no app and opened a PR with unrelated history. Only for status:ready with no PR:

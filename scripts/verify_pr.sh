@@ -9,6 +9,18 @@ export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
 REPO="ambativachan8-cmyk/daily-briefing"
 PR="${1:?usage: verify_pr.sh <pr>}"
 SHA="$(gh pr view "$PR" --repo "$REPO" --json headRefOid --jq .headRefOid)"
+# One real run per commit: the dispatcher, reviewer and tester all read the same output.
+CACHE="$HOME/logs/verify/$SHA-$(md5sum "$0" | cut -c1-8).txt"
+if [ -z "${VERIFY_PR_INNER:-}" ]; then
+  mkdir -p "$(dirname "$CACHE")"
+  if [ ! -s "$CACHE" ]; then
+    VERIFY_PR_INNER=1 bash "$0" "$PR" > "$CACHE.tmp" 2>&1
+    mv "$CACHE.tmp" "$CACHE"
+  fi
+  cat "$CACHE"
+  grep -qE "^verify_pr result: pytest=0 health=200 page=(ok|n/a) " "$CACHE"
+  exit $?
+fi
 PORT=$(( 18000 + PR ))
 W="$(mktemp -d)"; APP_PID=""
 cleanup() { [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null; rm -rf "$W"; }
@@ -56,6 +68,39 @@ if grep -qi '<html' <<<"$FIRST"; then
   page_check "history row marked with a check mark" '✓|&check;|&#10003;|&#x2713;' "$FIRST"
   page_check "Run now control" 'run now' "$FIRST"
   grep -qiE 'fetch\(|XMLHttpRequest' <<<"$FIRST" && echo "  note    the page uses JavaScript to load data"
+
+  # Use Run now the way a visitor does: post the page's own form, then read the page again.
+  U="http://127.0.0.1:$PORT"
+  runs_count() { curl -s "$U/runs" | jq '.runs | length'; }
+  first_status() { curl -s "$U/runs" | jq -r '.runs[0].status'; }
+  expect() {  # <label> <actual> <wanted>
+    if [ "$2" = "$3" ]; then echo "  ok      $1"; else echo "  MISSING $1 (got $2, wanted $3)"; PAGE_RESULT=fail; fi
+  }
+  ACTION="$(grep -oiE 'action="[^"]+"' <<<"$FIRST" | head -n 1 | cut -d'"' -f2)"
+  echo; echo "Run now, through the page's form (action=${ACTION:-none}):"
+  if [ -z "$ACTION" ]; then
+    echo "  MISSING a form that posts Run now"; PAGE_RESULT=fail
+  else
+    before="$(runs_count)"
+    curl -s -L -o /dev/null -X POST "$U$ACTION"
+    expect "Run now adds one history row" "$(runs_count)" "$(( before + 1 ))"
+    page_check "a run with nothing new says so" '0 new|no new|nothing new' "$(curl -s "$U/")"
+    before="$(runs_count)"
+    second="$(curl -s -L -X POST "$U$ACTION")"
+    expect "an immediate second Run now adds no row" "$(runs_count)" "$before"
+    page_check "the limited attempt tells the user" 'try again|rate.?limit|wait|too (soon|many)|busy' "$second"
+    curl -s -o /dev/null -X POST "$U/ingest"
+    expect "POST /ingest is no way around the limit" "$(runs_count)" "$before"
+    echo "  (waiting out the 1-minute limit for the failure and recovery checks)"
+    sleep 61
+    .venv/bin/python -m app.ops fail-next >/dev/null
+    curl -s -L -o /dev/null -X POST "$U$ACTION"
+    expect "a failed fetch is stored as a failed run" "$(first_status)" failed
+    page_check "the failed run shows a cross" '✗|&cross;|&#10007;|&#x2717;' "$(curl -s "$U/")"
+    sleep 61
+    curl -s -L -o /dev/null -X POST "$U$ACTION"
+    expect "the next good run succeeds" "$(first_status)" success
+  fi
 else
   PAGE_RESULT=n/a; echo; echo "Page checks skipped: / is not an HTML page yet."
 fi
