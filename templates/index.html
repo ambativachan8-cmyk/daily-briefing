@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Briefing</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .briefing { margin-bottom: 30px; }
+        .briefing h2 { margin-top: 0; }
+        .briefing-meta { color: #666; font-size: 0.9em; margin-bottom: 10px; }
+        .new-items { margin-top: 10px; }
+        .new-item { margin: 10px 0; padding: 10px; border-left: 3px solid #007bff; background: #f8f9fa; }
+        .new-item a { text-decoration: none; color: #007bff; font-weight: bold; }
+        .new-item a:hover { text-decoration: underline; }
+        .new-item .description { color: #333; margin-top: 5px; }
+        .history { border-top: 1px solid #ddd; padding-top: 20px; }
+        .history h2 { margin-top: 0; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; }
+        .status-success { color: green; font-weight: bold; }
+        .status-failed { color: red; font-weight: bold; }
+        .run-now-form { margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 4px; }
+        .run-now-btn { background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 1em; }
+        .run-now-btn:hover { background: #0056b3; }
+        .run-now-btn:disabled { background: #ccc; cursor: not-allowed; }
+        .rate-limit-msg { color: #dc3545; margin-top: 10px; }
+        .first-run-badge { background: #28a745; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.8em; margin-left: 10px; }
+        .no-items { color: #666; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>Daily Briefing</h1>
+
+    <div class="run-now-form">
+        <form id="run-now-form" action="/run-now" method="POST">
+            <button type="submit" class="run-now-btn" id="run-now-btn">Run Now</button>
+        </form>
+        <div id="rate-limit-msg" class="rate-limit-msg" style="display: none;"></div>
+    </div>
+
+    <div class="briefing">
+        <h2>
+            Latest Briefing
+            {% if latest_run and latest_run.is_first_run %}
+            <span class="first-run-badge">First Run</span>
+            {% endif %}
+        </h2>
+        {% if latest_run %}
+        <div class="briefing-meta">
+            Date: {{ latest_run.timestamp }} | New items: {{ latest_run.new_items_count }}
+        </div>
+        {% if latest_items %}
+        <div class="new-items">
+            {% for item in latest_items %}
+            <div class="new-item">
+                <a href="{{ item.link }}" target="_blank">{{ item.title }}</a>
+                <div class="description">{{ item.description }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="no-items">No new items in this run.</p>
+        {% endif %}
+        {% else %}
+        <p class="no-items">No runs yet. Click "Run Now" to generate the first briefing.</p>
+        {% endif %}
+    </div>
+
+    <div class="history">
+        <h2>Run History</h2>
+        {% if runs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Status</th>
+                    <th>New Items</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for run in runs %}
+                <tr>
+                    <td>{{ run.timestamp }}</td>
+                    <td>
+                        {% if run.status == 'success' %}
+                        <span class="status-success">✓</span>
+                        {% elif run.status == 'failed' %}
+                        <span class="status-failed">✗</span>
+                        {% else %}
+                        {{ run.status }}
+                        {% endif %}
+                        {% if run.error %}
+                        <br><small style="color: #dc3545;">{{ run.error }}</small>
+                        {% endif %}
+                    </td>
+                    <td>{{ run.new_items_count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-items">No runs recorded yet</p>
+        {% endif %}
+    </div>
+
+    <script>
+        document.getElementById('run-now-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('run-now-btn');
+            const msg = document.getElementById('rate-limit-msg');
+            btn.disabled = true;
+            msg.style.display = 'none';
+            
+            try {
+                const response = await fetch('/run-now', { method: 'POST' });
+                const data = await response.json();
+                if (response.ok) {
+                    location.reload();
+                } else if (response.status === 429) {
+                    msg.textContent = `Rate limited. Try again in ${data.retry_after_seconds}s.`;
+                    msg.style.display = 'block';
+                } else if (response.status === 409) {
+                    msg.textContent = data.error || 'Another run is in progress.';
+                    msg.style.display = 'block';
+                } else {
+                    msg.textContent = data.error || 'Run failed.';
+                    msg.style.display = 'block';
+                }
+            } catch (err) {
+                msg.textContent = 'Network error.';
+                msg.style.display = 'block';
+            } finally {
+                btn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
