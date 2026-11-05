@@ -13,13 +13,9 @@ from app.db import cleanup_stale_runs, get_items_by_run, get_runs, get_run, init
 from app.feed import _check_feed_fail_config, fetch_feed, get_feed_items, ingest_feed
 from app.scheduler import start_scheduler, stop_scheduler
 
-# Simple in-memory rate limiter for /ingest endpoint
-_ingest_last_call: dict[str, float] = {}
-INGEST_RATE_LIMIT_SECONDS = 5  # Minimum 5 seconds between runs
-
-# Rate limiter for /run-now endpoint (web UI)
-_run_now_last_call: dict[str, float] = {}
-RUN_NOW_RATE_LIMIT_SECONDS = 5  # Minimum 5 seconds between runs
+# Simple in-memory rate limiter shared by /ingest and /run-now endpoints
+_last_call: dict[str, float] = {}
+RATE_LIMIT_SECONDS = 5  # Minimum 5 seconds between runs
 
 # Lock to prevent overlapping runs
 _run_now_lock: bool = False
@@ -48,24 +44,12 @@ templates = Jinja2Templates(directory="templates")
 def check_rate_limit(client_ip: str) -> tuple[bool, float | None]:
     """Check if client is rate limited. Returns (allowed, retry_after_seconds)."""
     now = time()
-    last = _ingest_last_call.get(client_ip)
+    last = _last_call.get(client_ip)
     if last is not None:
         elapsed = now - last
-        if elapsed < INGEST_RATE_LIMIT_SECONDS:
-            return False, INGEST_RATE_LIMIT_SECONDS - elapsed
-    _ingest_last_call[client_ip] = now
-    return True, None
-
-
-def check_run_now_rate_limit(client_ip: str) -> tuple[bool, float | None]:
-    """Check if client is rate limited for run-now. Returns (allowed, retry_after_seconds)."""
-    now = time()
-    last = _run_now_last_call.get(client_ip)
-    if last is not None:
-        elapsed = now - last
-        if elapsed < RUN_NOW_RATE_LIMIT_SECONDS:
-            return False, RUN_NOW_RATE_LIMIT_SECONDS - elapsed
-    _run_now_last_call[client_ip] = now
+        if elapsed < RATE_LIMIT_SECONDS:
+            return False, RATE_LIMIT_SECONDS - elapsed
+    _last_call[client_ip] = now
     return True, None
 
 
@@ -137,11 +121,20 @@ async def ingest_endpoint(request: Request):
             },
         )
 
-    result = await ingest_feed()
-    if result["status"] == "failed" and "Another ingestion is already running" in str(result.get("error", "")):
-        return JSONResponse(status_code=409, content=result)
+    # Check for overlapping runs
+    global _run_now_lock
+    if _run_now_lock:
+        return JSONResponse(
+            status_code=409,
+            content={"error": "Another run is already in progress. Please wait."},
+        )
 
-    return JSONResponse(content=result)
+    _run_now_lock = True
+    try:
+        result = await ingest_feed()
+        return JSONResponse(content=result)
+    finally:
+        _run_now_lock = False
 
 
 @app.post("/run-now")
@@ -153,7 +146,7 @@ async def run_now_endpoint(request: Request):
     client_ip = request.client.host if request.client else "unknown"
     
     # Check rate limit
-    allowed, retry_after = check_run_now_rate_limit(client_ip)
+    allowed, retry_after = check_rate_limit(client_ip)
     if not allowed:
         return JSONResponse(
             status_code=429,

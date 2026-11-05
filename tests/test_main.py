@@ -5,16 +5,15 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 
-from app.main import app, _ingest_last_call, _run_now_last_call, _run_now_lock
+from app.main import app, _last_call, _run_now_lock
 from app.db import get_db_path, init_db
 
 
 @pytest.fixture(autouse=True)
 def reset_state():
     """Reset global state and clear database before each test."""
-    # Clear rate limiters
-    _ingest_last_call.clear()
-    _run_now_last_call.clear()
+    # Clear rate limiter
+    _last_call.clear()
     # Reset lock
     import app.main
     app.main._run_now_lock = False
@@ -34,8 +33,7 @@ def reset_state():
     yield
     
     # Cleanup after test
-    _ingest_last_call.clear()
-    _run_now_last_call.clear()
+    _last_call.clear()
     app.main._run_now_lock = False
 
 
