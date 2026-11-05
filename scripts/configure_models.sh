@@ -22,9 +22,9 @@ printf '%s\n' "$GH_TOKEN" | env -u GH_TOKEN gh auth login --with-token --hostnam
 #
 # Measured 2026-11-05: quota buckets are shared across model names. A gemini-3.5-flash call is
 # charged to gemini-3.6-flash, and gemini-3.7-flash to gemini-3.8-flash, so each pair appears once.
-# Flash-lite is not held to the 20/day limit: 3.1-flash-lite took 44 calls and then a burst of 18
-# on 2026-11-05. It is the abundant tier and flash is the scarce one, so the reviewer takes flash
-# first and lite last. A lite model once approved work a flash model rejected, so a lite approval
+# Flash-lite allows 500 requests/day per project against flash's 20 (429 quotaValue, 2026-11-05).
+# It is the abundant tier and flash is the scarce one, so the reviewer takes flash first and lite
+# last. A lite model once approved work a flash model rejected, so a lite approval
 # has to carry quoted probes and clean-checkout output, which the dispatcher checks, and the human
 # verifies independently before merging. The manager's remaining work is routine triage.
 declare -A H_PRIMARY=([manager]="gemini-3.5-flash-lite" [reviewer]="gemini-3-flash-preview")
@@ -69,9 +69,9 @@ cat > /tmp/openclaw-models.json5 <<EOF
 { tools: { profile: "coding" },
   agents: { entries: {
   backend: { model: { primary: "google/gemini-3.6-flash",
-                      fallbacks: ["google/gemini-3.8-flash", "google/gemini-3-flash-preview", "google/gemini-3.1-flash-lite", "$OR"] } },
+                      fallbacks: ["google/gemini-3.8-flash", "google/gemini-3-flash-preview", "google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite", "$OR"] } },
   ui:      { model: { primary: "google/gemini-3.8-flash",
-                      fallbacks: ["google/gemini-3.6-flash", "google/gemini-3-flash-preview", "google/gemini-3.1-flash-lite", "$OR"] } },
+                      fallbacks: ["google/gemini-3.6-flash", "google/gemini-3-flash-preview", "google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite", "$OR"] } },
   tester:  { model: { primary: "google/gemini-3.5-flash-lite",
                       fallbacks: ["google/gemini-3.1-flash-lite", "$OR"] } },
 } } }
