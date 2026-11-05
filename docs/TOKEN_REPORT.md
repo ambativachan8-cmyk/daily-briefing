@@ -1,6 +1,6 @@
 # Token usage report
 
-Generated 2026-11-05T11:34:24Z from `runs.jsonl` (160 run attempts).
+Generated 2026-11-05T16:41:46Z from `runs.jsonl` (176 run attempts).
 Counts are reported by the runtimes themselves (Hermes `--usage-file`, OpenClaw
 `--json` agent meta). **Actual cost: $0** — every key is free tier. The "list-price
 estimate" column is Hermes' own estimate of what the same tokens would cost on a paid
@@ -16,32 +16,39 @@ plan; OpenClaw reports `costUsd: 0` for these models. Model calls are exact for 
 | backend | openclaw | gemini-3.5-flash | 6 | 26 | 177806 | 8376 | 378086 | 564268 | 0 |
 | backend | openclaw | gemini-3.5-flash-lite | 25 | 142 | 565176 | 64665 | 5170473 | 5800314 | 0 |
 | backend | openclaw | gemini-3.6-flash | 7 | 2 | 56293 | 251 | 0 | 56544 | 0 |
-| backend | openclaw | nvidia/nemotron-3-ultra-550b-a55b:free | 4 | 122 | 412904 | 40309 | 5010912 | 5464125 | 0 |
+| backend | openclaw | nemotron-3-ultra-550b-a55b:free | 1 | 47 | 126927 | 7291 | 885568 | 1019786 | 0 |
+| backend | openclaw | nvidia/nemotron-3-ultra-550b-a55b:free | 3 | 75 | 285977 | 33018 | 4125344 | 4444339 | 0 |
 | manager | hermes | gemini-3-flash-preview | 1 | 7 | 54700 | 3606 | 32331 | 58637 | 0.0236 |
 | manager | hermes | gemini-3.1-flash-lite | 2 | 23 | 290077 | 1035 | 176691 | 291901 | 0.0365 |
 | manager | hermes | gemini-3.5-flash-lite | 5 | 64 | 561952 | 7967 | 280714 | 571841 | 0.1845 |
 | manager | hermes | gemini-3.6-flash | 1 | 16 | 191529 | 5532 | 99829 | 197426 | 0.145 |
+| manager | hermes | z-ai/glm-5.3-flash | 2 | 24 | 412895 | 20496 | 345600 | 434844 | 0 |
 | reviewer | hermes | gemini-3-flash-preview | 2 | 23 | 351432 | 12400 | 219672 | 364526 | 0.235 |
 | reviewer | hermes | gemini-3.1-flash-lite | 8 | 105 | 1661204 | 10561 | 1032937 | 1672245 | 0.2437 |
 | reviewer | hermes | gemini-3.5-flash-lite | 12 | 94 | 1278856 | 14091 | 848264 | 1293455 | 0.2218 |
-| reviewer | hermes | nvidia/nemotron-3-ultra-550b-a55b:free | 5 | 77 | 1738134 | 22791 | 1181949 | 1526720 | 0.0587 |
+| reviewer | hermes | nemotron-3-ultra-550b-a55b | 1 | 17 | 540467 | 6962 | 473472 | 547991 | 0 |
+| reviewer | hermes | nemotron-3-ultra-550b-a55b:free | 5 | 77 | 1738134 | 22791 | 1181949 | 1526720 | 0.0587 |
+| reviewer | hermes | z-ai/glm-5.3-flash | 4 | 76 | 3042492 | 71217 | 2511072 | 3115967 | 0 |
 | tester | openclaw | gemini-3-flash-preview | 5 | 19 | 86060 | 3445 | 162344 | 251849 | 0 |
 | tester | openclaw | gemini-3.1-flash-lite | 1 | 4 | 20105 | 801 | 48725 | 69631 | 0 |
 | tester | openclaw | gemini-3.5-flash-lite | 19 | 203 | 1146551 | 51188 | 2322319 | 3520058 | 0 |
 | tester | openclaw | gemini-3.6-flash | 3 | 9 | 52035 | 2208 | 37043 | 91286 | 0 |
+| tester | openclaw | z-ai/glm-5.3-flash | 4 | 45 | 0 | 0 | 0 | 0 | 0 |
 | ui | openclaw | gemini-3.1-flash-lite | 25 | 276 | 1549356 | 35932 | 3430179 | 5015467 | 0 |
 | ui | openclaw | gemini-3.5-flash-lite | 4 | 4 | 30131 | 270 | 24288 | 54689 | 0 |
+| ui | openclaw | nvidia/nemotron-3-ultra-550b-a55b | 4 | 229 | 0 | 0 | 0 | 0 | 0 |
 | ui | openclaw | nvidia/nemotron-3-ultra-550b-a55b:free | 2 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ui | openclaw | z-ai/glm-5.3-flash | 1 | 17 | 0 | 0 | 0 | 0 | 0 |
 
 ## By agent
 
 | Agent | Runs | Total tokens | Failed attempts (quota/provider) |
 |---|---:|---:|---:|
 | backend | 65 | 14827418 | 54 |
-| manager | 9 | 1119805 | 0 |
-| reviewer | 27 | 4856946 | 3 |
-| tester | 28 | 3932824 | 12 |
-| ui | 31 | 5070156 | 23 |
+| manager | 11 | 1554649 | 0 |
+| reviewer | 32 | 8520904 | 3 |
+| tester | 32 | 3932824 | 12 |
+| ui | 36 | 5070156 | 24 |
 
 ## By phase
 
@@ -54,9 +61,23 @@ differently: OpenClaw's input excludes them and Hermes' input includes them.
 | Phase | Attempts | Fresh tokens | Cache-read | Total reported |
 |---|---:|---:|---:|---:|
 | coding | 5 | 359202 | 2048722 | 2407924 |
-| planning | 4 | 195949 | 165669 | 363079 |
-| retries | 141 | 6000658 | 17967911 | 23736583 |
-| review/test | 10 | 976344 | 2321810 | 3299563 |
+| planning | 5 | 228028 | 316709 | 546766 |
+| retries | 154 | 6560865 | 20195911 | 26527929 |
+| review/test | 12 | 1148443 | 3272914 | 4423332 |
+
+## Not in the counts above: OpenClaw on NVIDIA (estimate)
+
+OpenClaw reports zero tokens for NVIDIA's API, so its UI builder and tester runs on NVIDIA add 0 to
+every table above, though their turn counts are real. **This is an estimate:** those turns multiplied
+by the average tokens per turn of OpenClaw runs that did report usage. Hermes reports NVIDIA usage
+normally, so it is already counted.
+
+| Agent | Turns on NVIDIA | Estimated total tokens | Of which fresh |
+|---|---:|---:|---:|
+| tester | 45 | ~1157000 | ~252000 |
+| ui | 246 | ~6324000 | ~1380000 |
+
+Average from 927 measured turns: 25707 total and 5608 fresh tokens per turn.
 
 ## Every run
 
@@ -222,3 +243,19 @@ differently: OpenClaw's input excludes them and Hermes' input includes them.
 | 20261105T112856Z | ui | #3 | google/gemini-3.5-flash-lite | error | 25420 |
 | 20261105T113025Z | ui | #3 | google/gemini-3.5-flash-lite | error | 29269 |
 | 20261105T113138Z | ui | #3 | google/gemini-3.5-flash-lite | error | 0 |
+| 20261105T121051Z | ui | #3 | nvidia/nvidia/nemotron-3-ultra-550b-a55b | ok | 0 |
+| 20261105T122856Z | ui | #3 | nvidia/nvidia/nemotron-3-ultra-550b-a55b | ok | 0 |
+| 20261105T124706Z | reviewer | #3 | nvidia/nemotron-3-ultra-550b-a55b | ok | 547991 |
+| 20261105T125028Z | tester | #3 | nvidia/z-ai/glm-5.3-flash | ok | 0 |
+| 20261105T125823Z | ui | #3 | nvidia/nvidia/nemotron-3-ultra-550b-a55b | ok | 0 |
+| 20261105T131148Z | reviewer | #3 | z-ai/glm-5.3-flash | ok | 544381 |
+| 20261105T132836Z | manager | #3 | z-ai/glm-5.3-flash | ok | 251157 |
+| 20261105T134256Z | ui | #3 | nvidia/nvidia/nemotron-3-ultra-550b-a55b | error | 0 |
+| 20261105T135033Z | ui | #3 | nvidia/z-ai/glm-5.3-flash | ok | 0 |
+| 20261105T140024Z | reviewer | #3 | z-ai/glm-5.3-flash | ok | 1032959 |
+| 20261105T141337Z | tester | #3 | nvidia/z-ai/glm-5.3-flash | ok | 0 |
+| 20261105T141647Z | reviewer | #3 | z-ai/glm-5.3-flash | ok | 414858 |
+| 20261105T152657Z | manager | #6 | z-ai/glm-5.3-flash | ok | 183687 |
+| 20261105T153122Z | tester | #6 | nvidia/z-ai/glm-5.3-flash | ok | 0 |
+| 20261105T154654Z | reviewer | #6 | z-ai/glm-5.3-flash | ok | 1123769 |
+| 20261105T160246Z | tester | #6 | nvidia/z-ai/glm-5.3-flash | ok | 0 |

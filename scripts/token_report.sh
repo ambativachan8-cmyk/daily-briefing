@@ -58,6 +58,21 @@ OUT="${2:-$HOME/agents/_src/docs/TOKEN_REPORT.md}"
     | .rows | group_by(.phase) | .[] |
     "| \(.[0].phase) | \(length) | \(map(.fresh) | add) | \(map(.cache_read_tokens // 0) | add) | \(map(.total_tokens // 0) | add) |"' "$IN"
   echo
+  echo "## Not in the counts above: OpenClaw on NVIDIA (estimate)"
+  echo
+  echo "OpenClaw reports zero tokens for NVIDIA's API, so its UI builder and tester runs on NVIDIA add 0 to"
+  echo "every table above, though their turn counts are real. **This is an estimate:** those turns multiplied"
+  echo "by the average tokens per turn of OpenClaw runs that did report usage. Hermes reports NVIDIA usage"
+  echo "normally, so it is already counted."
+  echo
+  jq -rs '(map(select(.framework == "openclaw" and (.total_tokens // 0) > 0 and (.assistant_turns // 0) > 0))) as $m
+    | ($m | map(.assistant_turns) | add) as $turns | ($m | map(.total_tokens) | add) as $tok
+    | ($m | map((.input_tokens // 0) + (.output_tokens // 0)) | add) as $fresh
+    | map(select(.framework == "openclaw" and ((.model // "") | test("^nvidia/(nvidia|z-ai)/")))) | group_by(.agent) | map({agent: .[0].agent, turns: (map(.assistant_turns // 0) | add)})
+    | "| Agent | Turns on NVIDIA | Estimated total tokens | Of which fresh |\n|---|---:|---:|---:|\n"
+      + (map("| \(.agent) | \(.turns) | ~\((.turns * $tok / $turns / 1000 | round) * 1000) | ~\((.turns * $fresh / $turns / 1000 | round) * 1000) |") | join("\n"))
+      + "\n\nAverage from \($turns) measured turns: \($tok / $turns | round) total and \($fresh / $turns | round) fresh tokens per turn."' "$IN"
+  echo
   echo "## Every run"
   echo
   echo "| Time (UTC) | Agent | Ticket | Model | Status | Total tokens |"

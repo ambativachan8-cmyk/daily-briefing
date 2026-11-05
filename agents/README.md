@@ -31,6 +31,11 @@ Gemma 4 is left out: its 16,000 input tokens/min is below one agent prompt (abou
 Omni and 3.1 Pro have no free quota, and the 2.5 models return 404. The current chains are in
 [../scripts/configure_models.sh](../scripts/configure_models.sh); the table above records the first plan.
 
+- **NVIDIA hosted API, free, added 2026-11-05.** Native provider in both runtimes, first in every chain
+  when `NVIDIA_API_KEY` is set. Tested with a 31k-token prompt and one tool: `nvidia/nemotron-3-ultra-550b-a55b`
+  (3.5 s) and `z-ai/glm-5.3-flash` (10 s) called it correctly. `deepseek-v4.1-flash` took 78 s, and
+  `kimi-k2.6` returned 404 on this account. No rate-limit headers are published.
+
 ## Rate-limit handling
 
 - **Hermes** switches models mid-run on its own (`fallback_providers`), and waits out a

@@ -1,28 +1,28 @@
 # Delivery report — Daily Briefing (Confer take-home #3)
 
-> **Status: in progress.** This file states only what has been verified; open items are
-> marked _open_. Last updated 2026-11-05 11:50 UTC. Merged and live: feed, storage, stable-ID dedup,
-> scheduler, failed-run storage. _Open: the public page and Run now (#3, four PRs rejected so far) and
-> the A1–A8 suite (#6). All free model quota ran out at 11:30 UTC, so agents resume at the next reset._
+> **Status: complete and live.** This file states only what has been verified. Last updated 2026-11-05 16:45 UTC.
+> Every required item works: scheduled and manual runs, stored history, stable-ID dedup, a dated public
+> briefing, failure and recovery, and A1–A8. Section 6 lists the limits. The team needed more human
+> correction than we wanted, and section 4 says where.
 
 | | |
 |---|---|
-| Live URL | https://13-55-31-171.sslip.io (fallback `http://13.55.31.171`). Redeploys on every merge to `main`. _Open: the page ships with #3; today it serves only the JSON scaffold._ |
+| Live URL | https://13-55-31-171.sslip.io (fallback `http://13.55.31.171`). Redeploys on every merge that changes the app. Try: Run Now adds a row showing 0 new; a second click within a minute is refused. Operator fail switch: `python -m app.ops fail-next`. |
 | Repository | https://github.com/ambativachan8-cmyk/daily-briefing |
 | Ticket trail | [Issues](https://github.com/ambativachan8-cmyk/daily-briefing/issues?q=is%3Aissue) · [Pull requests](https://github.com/ambativachan8-cmyk/daily-briefing/pulls?q=is%3Apr) |
 | Token report | [docs/TOKEN_REPORT.md](docs/TOKEN_REPORT.md), generated from the run log (per agent, model and phase). See "Where the tokens went" below. |
 | Traces | [docs/TRACES.md](docs/TRACES.md) |
-| Spend | $0 on model APIs. VM on AWS Free-plan credits (about $3.10/day) |
+| Spend | $0 on model APIs (all free tier). VM on AWS Free-plan credits (about $3.10/day) |
 
 ## 1. The team
 
 | Agent | Runtime | Role | Model (primary, then fallbacks) | Tools |
 |---|---|---|---|---|
-| Hermes Manager | Hermes Agent v0.22.5, profile `manager` | Orchestrator: writes tickets, releases dependencies, re-queues send-backs | `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, then OpenRouter Nemotron `:free` (planning ran on `gemini-3.5-flash`) | `terminal`, `file`, `todo`; `gh`, `git` |
-| OpenClaw Backend Builder | OpenClaw 2026.10.9, agent `backend` | Ingestion, storage, dedup, scheduler | `google/gemini-3.6-flash`, then `3.8-flash`, `3-flash-preview`, lite models, Nemotron | `coding` profile; `gh`, `git` |
-| OpenClaw UI Builder | OpenClaw 2026.10.9, agent `ui` | Public page, history, Run now | `google/gemini-3.8-flash`, then `3.6-flash`, `3-flash-preview`, lite models, Nemotron | `coding` profile; `gh`, `git` |
-| Hermes Reviewer | Hermes Agent v0.22.5, profile `reviewer` | Reviews each PR against ticket and brief; sets required status `agent/review` | `gemini-3-flash-preview`, `3.8-flash`, `3.6-flash`, then lite models, Nemotron | `terminal`, `file`, `todo`; `gh`, `git` |
-| OpenClaw Tester | OpenClaw 2026.10.9, agent `tester` | Independent tests; sets required status `agent/test`; owns the acceptance suite | `google/gemini-3.5-flash-lite`, `3.1-flash-lite`, Nemotron | `coding` profile; `gh`, `git` |
+| Hermes Manager | Hermes Agent v0.22.5, profile `manager` | Orchestrator: writes tickets, releases dependencies, re-queues send-backs | NVIDIA `z-ai/glm-5.3-flash`, then NVIDIA Nemotron, Gemini, OpenRouter (planning ran on `gemini-3.5-flash`) | `terminal`, `file`, `todo`; `gh`, `git` |
+| OpenClaw Backend Builder | OpenClaw 2026.10.9, agent `backend` | Ingestion, storage, dedup, scheduler | NVIDIA `nvidia/nemotron-3-ultra-550b-a55b`, then NVIDIA GLM, Gemini flash and lite, OpenRouter (most of its work ran on Gemini) | `coding` profile; `gh`, `git` |
+| OpenClaw UI Builder | OpenClaw 2026.10.9, agent `ui` | Public page, history, Run now | NVIDIA Nemotron, then NVIDIA GLM, Gemini flash and lite, OpenRouter | `coding` profile; `gh`, `git` |
+| Hermes Reviewer | Hermes Agent v0.22.5, profile `reviewer` | Reviews each PR against ticket and brief; sets required status `agent/review` | NVIDIA Nemotron, then NVIDIA GLM, Gemini flash and lite, OpenRouter | `terminal`, `file`, `todo`; `gh`, `git` |
+| OpenClaw Tester | OpenClaw 2026.10.9, agent `tester` | Independent tests; sets required status `agent/test`; owns the acceptance suite | NVIDIA GLM, then NVIDIA Nemotron, Gemini lite, OpenRouter | `coding` profile; `gh`, `git` |
 
 Full chains and how each was verified: [agents/README.md](agents/README.md). Configs and prompts:
 [agents/](agents/). The team has five agents because the suggested ops-builder role is covered by
@@ -33,12 +33,17 @@ on routine work. Everything we can reach is free-tier. Measured from Gemini's ow
 allows 20 requests/day per project and flash-lite 500, and quota buckets are shared across names:
 `3.5-flash` draws on `3.6-flash`, and `3.7-flash` on `3.8-flash`. So the scarce flash quota goes to
 review first, and lite covers routine testing and triage. In practice most of 2026-11-05 ran on lite,
-reviews included, because flash ran out early. Section 4 shows what that cost.
+reviews included, because flash ran out early. Section 4 shows what that cost. When all free quota ran
+out that afternoon, we added NVIDIA's free hosted API, which both runtimes support natively. Each model
+was chosen from one tool-call test at agent prompt size. Nemotron does the judgement work and GLM the
+routine work. The reviewer and the UI builder can share a model, which weakens independence, so the
+clean-checkout checks and the human remain the backstop. The most thorough reviews of the project ran
+on GLM, although Nemotron still approved the page that repeated items.
 
 **Human side (Vachan, with Claude Code as operator).** Terraform VM, runtime installs, agent
 identities, role prompts, ticket protocol, model wiring, the dispatcher, deployment, supervision,
 review findings, merges and this report. No product code was written on the human side: check with
-`git log --format='%an' -- app tests | sort | uniq -c`.
+`git log --format='%an' -- app tests templates | sort | uniq -c`.
 
 ## 2. How a ticket moves
 
@@ -71,15 +76,13 @@ Full protocol: [agents/PROTOCOL.md](agents/PROTOCOL.md).
 
 ## 3. What each agent actually did
 
-_Open: table finalised when the remaining tickets land._
-
 | Agent | Done so far |
 |---|---|
-| Hermes Manager | Split the brief into #1–#6 plus status issue #7. Released #2 after #1 merged. Re-queued #2 after the reviewer's rejection, rewrote its criteria to carry the brief's requirements, and corrected the dependencies of #5 and #6. |
+| Hermes Manager | Split the brief into #1–#6 plus status issue #7. Released #2 after #1 merged. Re-queued #2 after the reviewer's rejection, rewrote its criteria to carry the brief's requirements, and corrected the dependencies of #5 and #6. Re-queued #3 three times, then escalated it as `blocked` at its retry limit, as its protocol says. Released #6. |
 | OpenClaw Backend Builder | #1 scaffold (PR #8, merged). #2 feed and ingest (PR #9, merged as `b944788` after six agent commits): reworked after the reviewer's rejection and the owner's findings. It claimed fixes it had not made, and committed `venv/` once, then removed it. #5 scheduler (PR #10, merged as `05891b1`). #11 failed-run fix (PR #12, merged as `67b1db5`): it claimed the required tests were added before they were. |
-| Hermes Reviewer | Approved #1 after two reviews. Rejected PR #9 at `ea55954` after its prompt was hardened. Wrongly approved `28750bf` on a flash-lite model. Approved the final head `9a8cfa4` with a shallow review. Rejected the stub in PR #13 at `21e566d`, the crash in `7dba3db`, and the missing `/run-now` in PR #15. Rejected PR #12 at `a94676b` for missing tests. Wrongly approved `ec74208`, `d2168f3` and `fd41aa7` (see section 4). |
-| OpenClaw Tester | Tested #1. Passed `ea55954` with a count inflated by a stray local file. Passed `9a8cfa4` from a clean clone (41 tests, `git status --porcelain` empty). Reported a per-file breakdown for PR #10 that matched no real run, and twice set a green status with no output. Failed `72c949b` (broken requirements) and `d2168f3` (`/` still JSON) on real output. Passed `ec74208` wrongly. |
-| OpenClaw UI Builder | #3 public page: PRs #13, #15 and #16, all rejected and closed. It opened a stub with a fake `/run-now`, a JavaScript-only page, a page that crashed, a page that would not start, and then a route with no page. Current state: see the status line above. |
+| Hermes Reviewer | Approved #1 after two reviews. Rejected PR #9 at `ea55954` after its prompt was hardened. Wrongly approved `28750bf` on a flash-lite model. Approved the final head `9a8cfa4` with a shallow review. Rejected the stub in PR #13 at `21e566d`, the crash in `7dba3db`, and the missing `/run-now` in PR #15. Rejected PR #12 at `a94676b` for missing tests. Wrongly approved `ec74208`, `d2168f3`, `fd41aa7` and `8bccd97` (see section 4). On GLM it caught a browser-only break in PR #18 at `5c3c4e5` that every automated check had missed, and it reviewed #6 (PR #19). |
+| OpenClaw Tester | Tested #1. Passed `ea55954` with a count inflated by a stray local file. Passed `9a8cfa4` from a clean clone (41 tests, `git status --porcelain` empty). Reported a per-file breakdown for PR #10 that matched no real run, and twice set a green status with no output. Failed `72c949b` (broken requirements) and `d2168f3` (`/` still JSON) on real output. Passed `ec74208` and `8bccd97` wrongly. Wrote the A1–A8 suite (#6, PR #19), then passed its own PR and skipped review, which branch protection blocked. |
+| OpenClaw UI Builder | #3 public page: PRs #13, #15 and #16, all rejected and closed. It opened a stub with a fake `/run-now`, a JavaScript-only page, a page that crashed, a page that would not start, and then a route with no page. Then PR #18, merged as `d8203d9` after three more rounds on NVIDIA models: the owner rejected `8bccd97` and the reviewer rejected `5c3c4e5`. |
 
 ## 4. What broke, and how it was caught
 
@@ -154,16 +157,30 @@ are operator tooling: they judge the agents' code and contain no product code. T
 once, when an over-strict pattern parked a good review. The page checks passed end to end against a
 throwaway fixture (not in this repository), but have not yet judged a real agent page.
 
+**Green gates, one more time: PR #18.** With better models the page was close. Review and test were
+green at `8bccd97`, but the page said "1 new" and listed 4 links, the brief's own example of failure.
+Run Now also accepted a second run after 6 seconds, not 60. The human found both from a clean checkout
+and rejected it, and both became `verify_pr.sh` checks. On the rework the checks all passed while the
+leftover script made every browser click fail with "Network error". curl cannot see that; **the reviewer
+found it**, by reading the template. That also became a check, and the human then clicked the button in a
+real browser before approving the merge.
+
+**The tester reviewed itself.** On #6 the tester built the suite, passed its own PR and moved it to
+ready-to-merge. Branch protection refused the merge because `agent/review` was missing, so the human
+returned it for review. The human also broke the product five ways to confirm the suite fails each time:
+dedup, listing old items, rate limit, failed-run storage, and the first-run mark.
+
 **Stale setup and fragmented work on #3.** The UI builder's clone had never fetched `main`, because it
 first ran two days after setup. Its first PR was a stub with unrelated history, which was partly our
 fault. Fresh tickets now start from current `main`. The builder then split the work across PRs #15 and
 #16, so the human closed both and restarted the ticket with a definition of done in its body.
 
-**Quota ran out, partly through our own choices.** On 2026-11-05 every free model hit its daily limit
-by 11:30 UTC, including 500-a-day flash-lite on both projects. Causes: per-minute limits forcing retries,
+**Quota ran out, partly through our own choices.** On 2026-11-05 every Gemini model and OpenRouter hit
+their daily limits by 11:30 UTC, including 500-a-day flash-lite on both projects. Causes: per-minute limits forcing retries,
 repeated long-context rework on #3, the 2-minute poll making rework faster, and the operator's own
 probes, some of which landed on shared buckets. Hermes also hit a chain failure and a pause until the
-next day, which is now decided by a live probe rather than an assumption.
+next day, which is now decided by a live probe rather than an assumption. Adding NVIDIA ended the wait;
+it publishes no rate-limit headers, so its limit is treated as per-minute and waited out.
 
 **The operator made mistakes too.** Two Claude sessions operated the VM at once for about ten minutes
 until the human chose one. One of them stopped the dispatch timer without telling the other. A race in
@@ -177,20 +194,24 @@ an operator restart of the OpenClaw gateway made two builder attempts fail befor
 
 ### Where the tokens went
 
-As of 2026-11-05 11:34 UTC (160 attempts), counts as reported by the runtimes:
+As of 2026-11-05 16:41 UTC (176 attempts), counts as reported by the runtimes:
 
 | Phase | Fresh tokens | Cache-read | Total |
 |---|---:|---:|---:|
-| Planning | 195,949 | 165,669 | 363,079 |
+| Planning | 228,028 | 316,709 | 546,766 |
 | Coding (first successful run) | 359,202 | 2,048,722 | 2,407,924 |
-| Review and test (first successful run) | 976,344 | 2,321,810 | 3,299,563 |
-| Retries (failed attempts, rework, re-review) | 6,000,658 | 17,967,911 | 23,736,583 |
+| Review and test (first successful run) | 1,148,443 | 3,272,914 | 4,423,332 |
+| Retries (failed attempts, rework, re-review) | 6,560,865 | 20,195,911 | 26,527,929 |
 
-**In plain words: about 80% of all tokens went to retries, not first attempts.** Most of that is rework
-after send-backs and quota-interrupted turns, and each model call resends about 25k tokens of context, so
-a long retry is expensive even when it does little. The backend builder used the most (14.8M) because
-of the long rework on #2. Actual cost is $0: every key is free tier. The daily limit that bound us
-was requests, not tokens.
+Those total about 33.9M. OpenClaw reports zero tokens for NVIDIA's API, so about 7.5M more is an
+**estimate** (UI builder about 6.3M, tester about 1.2M): 291 real turns at the measured average of
+25.7k tokens per turn. Per-agent and per-model tables are in the report.
+
+**In plain words: about 78% of reported tokens went to retries, not first attempts,** and the NVIDIA
+rework on #3 would raise that share. Most of it is rework after send-backs and quota-interrupted turns.
+Each model call resends about 25k tokens of context, so a long retry is expensive even when it does
+little. The backend builder used the most reported tokens (14.8M), mainly in the long rework on #2.
+Actual cost is $0, because every key is free tier. The limit that bound us was requests per day, not tokens.
 
 ## 5. What we would change
 
@@ -227,6 +248,21 @@ was requests, not tokens.
 - **Free-tier capacity** sets the pace: 20 requests/day on flash and 500/day on flash-lite per project,
   per-minute limits on top, and 50/day on OpenRouter. Gemma's 16,000 input tokens/min rules it out for
   agents whose prompts run about 25k tokens.
+- **Known product warts, left on purpose.** After a click the browser stays on `/run-now`, because our gate
+  once could not follow a redirect and pushed the builder away from one. Timestamps are raw ISO. The page
+  has no dark-mode styling. Each app restart adds a run, because the scheduler ticks at startup. Keeping
+  the core small mattered more than fixing these.
+- **The feed is synthetic,** as the brief allows: one made-up item every 6 hours, matched by a 6-hour
+  schedule. A run right after another finds nothing new, as in the brief's example.
+- **The fresh-VM test ran before NVIDIA was added.** `configure_models.sh` handles the key, and it ran on
+  the real VM, but not on a fresh one.
+- **Schedule evidence.** Live history shows a tick exactly an hour after another (14:21:44 and 15:21:44
+  UTC), under the earlier hourly setting. The 6-hour setting was applied at 15:28 UTC, and its first tick
+  is due at 21:28 UTC, after this report was written.
+- **Test debts the reviewer flagged.** If the overlap guard were ever removed, A8 would hang rather than
+  fail cleanly. `tests/test_main.py` and `tests/test_scheduler.py` still write to the local
+  `data/briefing.db` of whichever checkout runs them; the live app runs from its own checkout.
+- **Token counts for OpenClaw on NVIDIA are estimates.** That runtime reports zero tokens for NVIDIA.
 - **AWS instead of Oracle.** The brief's plan B: the AWS Free-plan account is locked to `ap-southeast-2`,
   and Terraform targets that region.
 
@@ -235,7 +271,7 @@ was requests, not tokens.
 ```bash
 cd infra && cp terraform.tfvars.example terraform.tfvars   # set admin_cidr, key path
 terraform init && terraform apply
-scp agents/agents.env.example ubuntu@<ip>:~/.secrets/agents.env   # then fill in free-tier keys
+scp agents/agents.env.example ubuntu@<ip>:~/.secrets/agents.env   # then fill in free-tier keys (NVIDIA first)
 ssh ubuntu@<ip> 'git clone https://github.com/ambativachan8-cmyk/daily-briefing ~/agents/_src &&
   bash ~/agents/_src/scripts/install_all.sh'
 ```

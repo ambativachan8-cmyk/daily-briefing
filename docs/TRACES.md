@@ -151,3 +151,28 @@ verify_pr result: pytest=1 health=200 page=n/a head=87b3d41833bc0e15eb436059a1bc
 
 The reviewer had cited `tests/test_regression.py:165 (test_regression_7_cleanup_stale_runs)`. `84b0ebc` then added the tests, and the merged PR is `67b1db5`.
 
+## 10. The reviewer finding what plain code could not (PR #18, head `5c3c4e5`)
+
+The checks passed, because curl does not run JavaScript. From the review:
+
+```
+| E: Run now = plain form post via ingest path, ≤1/min, returns to page, limited/busy message on page, adds no row | ✗ | … in any JavaScript browser the form never posts: the leftover script intercepts the submit and calls `response.json()` on responses that are now text/html for 200/429/409 — every click shows "Network error."
+agent/review failure 2026-11-05T13:28:14Z CHANGES REQUESTED: broken leftover script breaks Run Now in JS browsers; scheduler.py revert (owner point 5) not done
+```
+
+## 11. A manager escalation at the retry limit (ticket #3)
+
+```
+[hermes-manager] BLOCKED: this ticket has used its 3 re-queues (Delivery status records retries: 3), so per SOUL.md I am marking it `blocked` instead of sending it back a 4th time, and escalating …
+[human-owner] Unblocking, one more retry. The manager was right to escalate at the limit, and this is the call.
+```
+
+## 12. Branch protection stopping a self-approved PR (PR #19, head `97f9934`)
+
+```
+PR #19 not merge-ready at 97f9934: agent/test=success
+[human-owner] This PR has no review: the tester built it, passed its own work and moved it to ready-to-merge. Branch protection rightly blocks the merge because `agent/review` is missing.
+```
+
+The merged result is `dee6586`.
+

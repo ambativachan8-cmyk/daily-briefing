@@ -1,14 +1,20 @@
 model:
-  default: gemini-3.6-flash
-  provider: gemini
+  default: nvidia/nemotron-3-ultra-550b-a55b
+  provider: nvidia
 _config_version: 51
 fallback_providers:
-- provider: gemini
-  model: gemini-3.5-flash
+- provider: nvidia
+  model: z-ai/glm-5.3-flash
 - provider: gemini
   model: gemini-3-flash-preview
 - provider: gemini
+  model: gemini-3.8-flash
+- provider: gemini
+  model: gemini-3.6-flash
+- provider: gemini
   model: gemini-3.5-flash-lite
+- provider: gemini
+  model: gemini-3.1-flash-lite
 - provider: openrouter
   model: nvidia/nemotron-3-ultra-550b-a55b:free
 fallback:
