@@ -62,6 +62,19 @@ sudo -n -u agent grep -q "GH_TOKEN=$AGENT_VALUE" "$AGENT_DIR/.secrets/agents.env
 sudo -n -u agent grep -q "$CONTROL_VALUE" "$AGENT_DIR/.secrets/agents.env" && fail "the control token reached the agent" || pass "the control token does not reach the agent"
 sudo -n -u agent grep -q 'SIMMODEL' "$AGENT_DIR/.secrets/agents.env" && pass "model keys reach the agent" || fail "model keys"
 
+echo "== automation stays off until the owner decides"
+TIMER="$HERE/../scripts/install_dispatch_timer.sh"
+mkdir -p "$H/.config"
+timer() { env -i HOME="$H" PATH="$H/bin:/usr/bin:/bin" bash "$TIMER" "$@" 2>&1; }
+out="$(timer)"; rc=$?
+[ "$rc" = 0 ] && [ -e "$H/.config/dispatch-security-hold" ] && [ ! -e "$H/.config/systemd/user/dispatch.timer" ] && pass "a fresh install sets the hold and writes no timer" || fail "fresh timer install rc=$rc"
+out="$(timer --enable)"; rc=$?
+[ "$rc" = 3 ] && grep -q 'REFUSED' <<<"$out" && pass "--enable is refused while the hold exists" || fail "enable with hold rc=$rc"
+rm -f "$H/.config/dispatch-security-hold"
+sed -i '/^AGENT_GH_TOKEN=/d' "$H/.secrets/agents.env"
+out="$(timer --enable)"; rc=$?
+[ "$rc" = 3 ] && grep -q 'fix the tokens' <<<"$out" && [ ! -e "$H/.config/systemd/user/dispatch.timer" ] && pass "--enable is refused without a separate agent token" || fail "enable without agent token rc=$rc"
+
 echo
 echo "fresh setup check: $FAILS failed"
 exit "$FAILS"
