@@ -110,6 +110,10 @@ operator's clean-checkout probes. The human merged it as `b944788` on 2026-11-05
 the reviewer's comment skipped the per-finding rows its prompt requires, so the operator's probes carry
 most of the weight for this merge.
 
+**The operator missed one too.** After that merge, a scheduler probe showed an unexpected exception leaves no
+history row: the rollback removes the run's own row. The operator's probe output for PR #9 had already shown
+this and was read past, so the merge evidence given to the human was incomplete. It is tracked as a bug ticket.
+
 **The dispatcher misread quota.** It treated a second 429 as daily exhaustion, so a model with quota
 left was written off until the next reset. A probe that answered 200 exposed it. A related bug paused
 Hermes until 08:00 UTC when OpenRouter reset at 00:00. Both are fixed and logged in `git log`. Separately,
