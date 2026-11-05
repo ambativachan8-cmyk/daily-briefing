@@ -37,7 +37,11 @@
         <form id="run-now-form" action="/run-now" method="POST">
             <button type="submit" class="run-now-btn" id="run-now-btn">Run Now</button>
         </form>
+        {% if rate_limit_msg %}
+        <div class="rate-limit-msg">{{ rate_limit_msg }}</div>
+        {% else %}
         <div id="rate-limit-msg" class="rate-limit-msg" style="display: none;"></div>
+        {% endif %}
     </div>
 
     <div class="briefing">
@@ -50,14 +54,21 @@
         {% if latest_run %}
         <div class="briefing-meta">
             Date: {{ latest_run.timestamp }} | {{ latest_run.new_items_count }} new
+            {% if latest_run.status == 'failed' %}
+            <span class="status-failed"> (FAILED: {{ latest_run.error }})</span>
+            {% endif %}
         </div>
-        {% if latest_run.new_items_count > 0 %}
+        {% if latest_run.status == 'failed' %}
+        <p class="no-items" style="color: #dc3545; font-weight: bold;">This run failed: {{ latest_run.error }}</p>
+        {% elif latest_run.new_items_count > 0 %}
         <div class="new-items">
             {% for item in latest_items %}
+            {% if item.is_new %}
             <div class="new-item">
                 <a href="{{ item.link }}" target="_blank">{{ item.title }}</a>
                 <div class="description">{{ item.description }}</div>
             </div>
+            {% endif %}
             {% endfor %}
         </div>
         {% else %}

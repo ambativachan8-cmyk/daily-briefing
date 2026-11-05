@@ -79,15 +79,20 @@ async def test_root_endpoint_shows_no_runs_when_empty(async_client):
 
 @pytest.mark.asyncio
 async def test_run_now_endpoint(async_client):
-    """Test the run-now endpoint triggers ingestion."""
-    response = await async_client.post("/run-now")
-    assert response.status_code == 200
-    data = response.json()
-    assert "run_id" in data
-    assert "status" in data
-    assert data["status"] in ("success", "failed")
-    assert "new_items_count" in data
-    assert "timestamp" in data
+    """Test the run-now endpoint triggers ingestion and redirects."""
+    response = await async_client.post("/run-now", follow_redirects=False)
+    assert response.status_code == 303  # Redirect to /
+    assert response.headers.get("location") == "/"
+    
+    # Verify a run was created
+    runs_resp = await async_client.get("/runs")
+    runs_data = runs_resp.json()
+    assert len(runs_data["runs"]) == 1
+    run = runs_data["runs"][0]
+    assert run["status"] in ("success", "failed")
+    assert "id" in run
+    assert "new_items_count" in run
+    assert "timestamp" in run
 
 
 @pytest.mark.asyncio
@@ -99,8 +104,10 @@ async def test_run_now_rate_limit(async_client):
     # Second request immediately should be rate limited
     response = await async_client.post("/run-now")
     assert response.status_code == 429
-    data = response.json()
-    assert "retry_after_seconds" in data
+    # Returns HTML page with rate limit message
+    assert "text/html" in response.headers.get("content-type", "")
+    assert "Rate limited" in response.text
+    assert "Try again" in response.text
 
 
 @pytest.mark.asyncio
@@ -114,6 +121,20 @@ async def test_ingest_endpoint(async_client):
     assert data["status"] in ("success", "failed")
     assert "new_items_count" in data
     assert "timestamp" in data
+
+
+@pytest.mark.asyncio
+async def test_run_now_overlapping(async_client):
+    """Test run-now endpoint prevents overlapping runs."""
+    import app.main
+    app.main._run_now_lock = True
+    try:
+        response = await async_client.post("/run-now")
+        assert response.status_code == 409
+        assert "text/html" in response.headers.get("content-type", "")
+        assert "in progress" in response.text.lower()
+    finally:
+        app.main._run_now_lock = False
 
 
 @pytest.mark.asyncio

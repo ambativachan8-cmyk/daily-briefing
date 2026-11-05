@@ -15,7 +15,7 @@ from app.scheduler import start_scheduler, stop_scheduler
 
 # Simple in-memory rate limiter shared by /ingest and /run-now endpoints
 _last_call: dict[str, float] = {}
-RATE_LIMIT_SECONDS = 5  # Minimum 5 seconds between runs
+RATE_LIMIT_SECONDS = 60  # Minimum 60 seconds between runs
 
 # Lock to prevent overlapping runs
 _run_now_lock: bool = False
@@ -142,32 +142,61 @@ async def run_now_endpoint(request: Request):
     """
     Manual run trigger from the web UI.
     Rate limited and prevents overlapping runs.
+    Returns HTML (redirect to /) for plain form submissions.
     """
     client_ip = request.client.host if request.client else "unknown"
     
     # Check rate limit
     allowed, retry_after = check_rate_limit(client_ip)
     if not allowed:
-        return JSONResponse(
-            status_code=429,
-            content={
-                "error": "Rate limited. Try again later.",
-                "retry_after_seconds": round(retry_after, 1),
+        # Return HTML page with rate limit message
+        runs = get_runs(limit=100)
+        latest_run = dict(runs[0]) if runs else None
+        latest_items = []
+        if latest_run:
+            items = get_items_by_run(latest_run["id"])
+            latest_items = [dict(item) for item in items]
+        
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {
+                "runs": [dict(run) for run in runs],
+                "latest_run": latest_run,
+                "latest_items": latest_items,
+                "rate_limit_msg": f"Rate limited. Try again in {round(retry_after, 1)}s.",
             },
+            status_code=429,
         )
     
     # Check for overlapping runs
     global _run_now_lock
     if _run_now_lock:
-        return JSONResponse(
+        runs = get_runs(limit=100)
+        latest_run = dict(runs[0]) if runs else None
+        latest_items = []
+        if latest_run:
+            items = get_items_by_run(latest_run["id"])
+            latest_items = [dict(item) for item in items]
+        
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {
+                "runs": [dict(run) for run in runs],
+                "latest_run": latest_run,
+                "latest_items": latest_items,
+                "rate_limit_msg": "Another run is already in progress. Please wait.",
+            },
             status_code=409,
-            content={"error": "Another run is already in progress. Please wait."},
         )
     
     _run_now_lock = True
     try:
-        result = await ingest_feed()
-        return JSONResponse(content=result)
+        await ingest_feed()
+        # Redirect to root to show updated page
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/", status_code=303)
     finally:
         _run_now_lock = False
 
