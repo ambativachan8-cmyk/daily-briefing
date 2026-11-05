@@ -1,0 +1,79 @@
+# Release evidence
+
+What is known about this submission, how it is known, and what is not known. Written after a release review on
+2026-11-05 and 06 UTC, against `main` at `25b77d5`.
+
+**Who checked what.** A fresh reviewer got only the brief and the public links, with instructions to trust no claim:
+[its report](evidence/independent-review-2026-11-05.md). It scored the submission 70/100 before these corrections, and that
+score has not been reissued. The operator (Claude Code, the same tool that built the gates) then reproduced its findings and
+ran the checks below. So "verified" here means checked directly, outside the agents' own claims. It does not mean
+checked by a third party.
+
+## Verified, not taken from an agent's claim
+
+| Claim | How it was checked | Result |
+|---|---|---|
+| Product code is agent-authored | `git log --format='%an' -- app tests templates requirements.txt \| sort \| uniq -c` | Backend 10, UI 12, Tester 1, human 0. Author names are unsigned. |
+| The test suite passes from a clean clone | Fresh venv, `python -m pytest -q` | 61 passed |
+| The core works under faults | [harness/fault.py](evidence/harness/fault.py), [results](evidence/fault-injection-results.txt) | 16 checks passed, 0 failed: first run, 0-new run, rate limit, 30 parallel runs with no duplicate items, failed run and recovery, crash recovery, malformed feed, escaping |
+| The live rate limit resists a spoofed client address | `X-Forwarded-For` sent through Caddy, then the server log read | Log shows the real address, not the spoofed one |
+| The tests catch broken behaviour | [harness/mutate.py](evidence/harness/mutate.py), [results](evidence/mutation-results.txt) | 25 broken versions: 16 caught, 1 hung the suite, **8 not caught** ([#23](https://github.com/ambativachan8-cmyk/daily-briefing/issues/23)) |
+| The agent account is really fenced off | [`agent_boundary.sh`](../security/agent_boundary.sh) on the real host, with positive controls added: [log](evidence/agent-boundary-rerun.log) | 28 proven, 0 failed |
+| The dispatcher is off | Read on the host | Timer masked, hold file present, agent account has no GitHub token |
+| `terraform init` works on Linux | Real Linux host, the committed lock and then the new one: [log](evidence/terraform-lock-linux.log) | Failed before (exit 1), passes after (exit 0) |
+| Staged releases cannot wipe production | Staged a release in a temp root on its own port: [log](evidence/staged-release-no-tests.log) | Ready, with no `tests/` |
+| The token totals add up | The review summed every table. [The raw log](evidence/runs.jsonl) is now published | All tables total 33,905,951 |
+| Every cited commit and link exists | Each one resolved through the GitHub API | 28 commits and 25 links resolve |
+| No secrets in git | The review scanned 1,322 blobs on all refs. The operator checked `runs.jsonl` and the refreshed configs | None found |
+
+## Reported by the runtimes or agents, not independently checked
+
+- **Token counts.** They are what Hermes and OpenClaw reported. OpenClaw reports zero for NVIDIA, so about 7.5M is an estimate.
+- **The agents' comments and statuses.** All of them sit on one GitHub account, and before PR #20 any agent shell could have
+  forged them. The trail cross-checks (the review matched label events to the second, and each agent commit to a logged run of
+  that agent), but that is consistency, not proof.
+
+## Simulated
+
+- **The 19 blocked attacks and 2 controls in [security/results/](../security/results/).** They ran in the real sandbox with a
+  stubbed GitHub, recorded by the operator at `75efbb3`. They were not re-run in this review, because they should run on a
+  disposable host and that needs an AWS login. The scripts have not changed apart from the positive controls in
+  `agent_boundary.sh` (`git diff 75efbb3 -- security/adversarial.py scripts/gate_lib.sh scripts/verify_pr.sh`).
+- **One soft attack result.** The `evil_requirements` baseline shows that pip was reached with no refusal, not that the hostile
+  directive took effect. That check on the audited commit cannot fail.
+
+## Untested
+
+| What | Why | What would prove it |
+|---|---|---|
+| A real ticket through the current workflow | The agents' narrower token does not exist. Only the owner can create it, and the dispatcher stays off until then | Run tickets [#21](https://github.com/ambativachan8-cmyk/daily-briefing/issues/21) to [#24](https://github.com/ambativachan8-cmyk/daily-briefing/issues/24) |
+| Whether the agents' token can merge, or bypass the gates | Same. Contents write is what a merge needs, so assume it can merge a green PR. Whether it can bypass depends on the owner's admin exemption | `enforce_admins=true` removes the bypass whatever the answer |
+| The current setup on a fresh VM | Earlier scripts ran end to end on 2026-11-05. The security rework has not. Needs an AWS login | `terraform apply` plus `install_all.sh` on a disposable VM |
+| The team running from someone else's fork | The repo name is hard-coded. The steps are in DELIVERY section 7, and they have not been run | A fork |
+
+## The review's findings, and what happened to each
+
+| # | Finding | Reproduced? | Status |
+|---|---|---|---|
+| 1 | The agent team cannot run today, and the diagram shows a flow no ticket took | Yes, on the host | **Open: owner action.** The diagram is now labelled, and DELIVERY section 2 describes the flow that really shipped |
+| 2 | The operator's role is larger than the roster shows | Yes: 56 of 56 commits, and the `#2` timeline | Disclosed in DELIVERY section 1 |
+| 3 | Gates do not bind the merging account; the agents' token may merge | PR #20 confirmed. Token untested | Disclosed. `security/README.md`'s "cannot merge" is withdrawn. **Owner decision** on `enforce_admins` |
+| 4 | Documented `terraform init` fails on Linux and macOS | Yes, on real Linux | **Fixed and retested** |
+| 5 | The 6-hour schedule has not been seen firing, and DELIVERY's prediction was wrong | Yes: the service restarted at 20:32:42 UTC, so the promised 21:28 tick could not happen | Statement corrected. Evidence of the first tick is in DELIVERY section 6 once it fires |
+| 6 | No way to run the tests from the docs; fork and cloud-init steps missing; no reason given for AWS | Yes | Docs added. Fork steps not executed |
+| 7 | "Owner comments only" does not separate the owner from the agents | Yes, by reading the code | Named as a limit in `security/README.md`. Not fixed: it needs separate GitHub identities |
+| 8 | Weak tests; the suite wipes the database it finds | Yes: on a copy, 5 rows became 0 while reporting 61 passed | **Fixed in deployment and on the live release.** The suite itself: ticket [#23](https://github.com/ambativachan8-cmyk/daily-briefing/issues/23) |
+| 9 | No agent-by-phase token split; wrong planning model | Yes | **Fixed:** report regenerated from the real log, and operator use marked as uncounted |
+| 10 | Thin first-run wording; items vanish after Run now; raw dates; `/run-now` shows JSON | Yes, in a real browser | Tickets [#21](https://github.com/ambativachan8-cmyk/daily-briefing/issues/21) and [#22](https://github.com/ambativachan8-cmyk/daily-briefing/issues/22), for the agents |
+| 10 | At 375 px the layout widens to 424 px | **No.** In a real browser at 375 px the page was 375 wide | Closed, not reproduced |
+| 11 | A database error gives a 500 and no failed row | Yes: [log](evidence/db-error-repro.log) | Ticket [#24](https://github.com/ambativachan8-cmyk/daily-briefing/issues/24), for the agents |
+| 11 | No security headers, public API docs, no CSRF check | Yes | Accepted: no login, no private data, and no paid model behind the public button |
+| 12 | Boundary proof had no positive control; one attack check cannot fail | Yes | Control **fixed and rerun**. Attack check disclosed above |
+| 13 | Stale `openclaw.json` | Yes | **Fixed:** refreshed from the live config and scanned for secrets |
+
+**One action taken on the live VM.** `tests/` was moved out of the serving release to `~/deploy/quarantine/`, so nobody can erase
+the public history by running the suite there. No restart. The public page stayed up and all rows remained.
+
+**Two false alarms from the review's own harness, recorded so that nobody repeats them.** Some early fault-injection runs
+failed because of test-harness bugs, not product bugs: a future timestamp on a seeded row, and on Windows a leftover child
+process and an undrained log pipe. Those runs were discarded and the published results come from the corrected harness.

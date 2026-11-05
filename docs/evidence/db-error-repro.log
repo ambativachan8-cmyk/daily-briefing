@@ -1,0 +1,3 @@
+Run now during a DB error: HTTP 500 | body: Internal Server Error
+rows stored for that failure: 0
+next run after the error clears: HTTP 200 | latest: success

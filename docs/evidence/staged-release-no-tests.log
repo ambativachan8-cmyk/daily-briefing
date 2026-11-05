@@ -1,0 +1,6 @@
+deploy: staged and checked 25b77d5
+rc=0
+. .. .gitattributes .gitignore .ready .venv DELIVERY.md README.md agents app data docs infra requirements.txt scripts security templates 
+READY
+tests-absent
+/tmp/stage-check.AulsQ9/shared/data

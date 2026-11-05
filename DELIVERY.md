@@ -1,12 +1,19 @@
 # Delivery report — Daily Briefing (Confer take-home #3)
 
-> **Status: the product is live. Agent automation is paused pending the owner's decision.** This file states only what
-> has been verified. Last updated 2026-11-05 21:10 UTC.
-> Every required product item works: scheduled and manual runs, stored history, stable-ID dedup, a dated public
-> briefing, failure and recovery, and A1–A8. Section 6 lists the limits. The team needed more human
-> correction than we wanted, and section 4 says where. **An external audit then found that the agent workflow
-> had no real security boundary.** That is reproduced and fixed in code, and section 4 opens with it. The
-> dispatcher stays stopped until the owner supplies a narrower agent token and approves restarting it.
+> **Status: the product is live, and the agent team that built it is paused.** The required product items work: scheduled and
+> manual runs, stored history, stable-ID dedup, a dated public briefing, failure and recovery, A1–A8. The team needed
+> more human correction than we wanted, and section 4 says where. After delivery, an external audit found the agent workflow had no
+> real security boundary. That is reproduced and fixed in code, but **no real ticket has gone through the fixed workflow yet**:
+> the dispatcher stays stopped until the owner creates a narrower agent token and approves a restart.
+>
+> [docs/RELEASE_EVIDENCE.md](docs/RELEASE_EVIDENCE.md) separates what was verified, reported by agents, simulated and untested.
+
+**Five minutes, start here**
+
+1. **The product:** open the live URL and press Run Now. A row showing 0 new appears, and a second press within a minute is refused.
+2. **The story:** read [issue #2](https://github.com/ambativachan8-cmyk/daily-briefing/issues/2) and [PR #18](https://github.com/ambativachan8-cmyk/daily-briefing/pull/18): rejections, rework, and what the gates missed.
+3. **Who wrote it:** `git log --format='%an' -- app tests templates | sort | uniq -c`
+4. **What is still open:** [issues #21 to #24](https://github.com/ambativachan8-cmyk/daily-briefing/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Abug), found by the release review and queued for the agents.
 
 | | |
 |---|---|
@@ -22,7 +29,7 @@
 
 | Agent | Runtime | Role | Model (primary, then fallbacks) | Tools |
 |---|---|---|---|---|
-| Hermes Manager | Hermes Agent v0.22.5, profile `manager` | Orchestrator: writes tickets, releases dependencies, re-queues send-backs | NVIDIA `z-ai/glm-5.3-flash`, then NVIDIA Nemotron, Gemini, OpenRouter (planning ran on `gemini-3.5-flash`) | `terminal`, `file`, `todo`; `gh`, `git` |
+| Hermes Manager | Hermes Agent v0.22.5, profile `manager` | Orchestrator: writes tickets, releases dependencies, re-queues send-backs | NVIDIA `z-ai/glm-5.3-flash`, then NVIDIA Nemotron, Gemini, OpenRouter (the first plan ran on `gemini-3-flash-preview`) | `terminal`, `file`, `todo`; `gh`, `git` |
 | OpenClaw Backend Builder | OpenClaw 2026.10.9, agent `backend` | Ingestion, storage, dedup, scheduler | NVIDIA `nvidia/nemotron-3-ultra-550b-a55b`, then NVIDIA GLM, Gemini flash and lite, OpenRouter (most of its work ran on Gemini) | `coding` profile; `gh`, `git` |
 | OpenClaw UI Builder | OpenClaw 2026.10.9, agent `ui` | Public page, history, Run now | NVIDIA Nemotron, then NVIDIA GLM, Gemini flash and lite, OpenRouter | `coding` profile; `gh`, `git` |
 | Hermes Reviewer | Hermes Agent v0.22.5, profile `reviewer` | Reviews each PR against ticket and brief; its final line decides required status `agent/review` | NVIDIA Nemotron, then NVIDIA GLM, Gemini flash and lite, OpenRouter | `todo` only, since the security fix: no shell, no files, evidence in the prompt |
@@ -44,12 +51,22 @@ routine work. The reviewer and the UI builder can share a model, which weakens i
 clean-checkout checks and the human remain the backstop. The most thorough reviews of the project ran
 on GLM, although Nemotron still approved the page that repeated items.
 
-**Human side (Vachan, with Claude Code as operator).** Terraform VM, runtime installs, agent
+**Human side (Vachan, with Claude Code as operator; "operator" below means this pairing).** A strong model did a lot here, and it
+is not on the roster because it is not one of the delivery agents. All 56 non-merge human-side commits carry a Claude Code
+co-author, including about 3,000 lines of gate and security scripts. Comments tagged `[human-owner]` were written with it. Vachan
+approved each product merge. Some send-backs were close to specifications: on [#2](https://github.com/ambativachan8-cmyk/daily-briefing/issues/2)
+one named a command to run and a test to write, and that test appears in the code. Some send-backs on #2 also went straight
+to the builder, skipping the manager. So the agents wrote every line of product code, but the human side did much of the catching
+and some of the design. Its tokens are not in the token report. Its work: Terraform VM, runtime installs, agent
 identities, role prompts, ticket protocol, model wiring, the dispatcher, deployment, supervision,
 review findings, merges and this report. No product code was written on the human side: check with
 `git log --format='%an' -- app tests templates | sort | uniq -c`.
 
 ## 2. How a ticket moves
+
+**This diagram is the current design. No ticket has run through it yet.** Tickets #1 to #19 ran the earlier flow: no owner
+approval or sandbox, and the reviewer and tester had shells, ran their own checks and set the gates themselves. The human merged. That
+flow is the one in the ticket trail, and section 4 explains why it was replaced. Its prompts are in git history at `e2a83ce`.
 
 ```mermaid
 flowchart TD
@@ -132,7 +149,7 @@ receipt bound to the SHA. The reviewer and tester now judge with no tools at all
 **Exact-head evidence.** The proofs ran from a clean clone of `75efbb3ba8b215c2e88a11dd29c232b16704afc9` on the real VM and sandbox: see
 [security/results/](security/results/). Against the audited commit 17 of 17 attacks landed. Against the fix 19 attacks were blocked
 and 2 controls passed. The attacks must land on the audited commit or the run counts as a failure, so they cannot pass by being
-unable to detect the bug. An honest approved PR reached a merge decision, and the normal team routes still work. GitHub was a stub in
+unable to detect the bug, with one exception: the `requirements.txt` baseline only shows that pip was reached with no refusal. An honest approved PR reached a merge decision, and the normal team routes still work. GitHub was a stub in
 these runs, because one account cannot fork its own repository or act as an outsider. One check failed on its first run because of a
 fault in the check itself. That is recorded there, and it passed at `8d04045`, which changes only that check.
 
@@ -268,7 +285,9 @@ tokens, one Hermes run that hit a stalled NVIDIA model and was stopped with no c
 were again reported as zero.
 
 **In plain words: about 78% of reported tokens went to retries, not first attempts,** and the NVIDIA
-rework on #3 would raise that share. Most of it is rework after send-backs and quota-interrupted turns.
+rework on #3 would raise that share. That 26.5M is two different things: 12.5M in attempts that failed, mostly on quota, which
+was waste, and 14.0M in repeat runs such as re-reviews and rework after a send-back, which is the gates doing their job.
+The token report splits these by agent and by model.
 Each model call resends about 25k tokens of context, so a long retry is expensive even when it does
 little. The backend builder used the most reported tokens (14.8M), mainly in the long rework on #2.
 Actual cost is $0, because every key is free tier. The limit that bound us was requests per day, not tokens.
@@ -298,10 +317,11 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
   under the owner's account. Authorship is carried by per-agent git authors and the signature tag on
   each comment. GitHub refuses formal "approve" reviews (self-approval), so the gate is two required
   commit statuses.
-- **Gate strength.** `enforce_admins` is off so the human can merge, and operator changes to scripts
-  and prompts went straight to `main` until this fix, which is a PR. No operator commit touches `app/` or `tests/`. The
-  gate is OS accounts, token permissions and branch protection, not cryptographic separation. Whether the agents' token can
-  bypass protection without Administration permission must be tested when that token exists.
+- **Gate strength.** `enforce_admins` is off, so the gates do not bind the owner's account. 49 operator commits to scripts and
+  prompts went straight to `main`, and PR #20, the security fix itself, merged with neither gate. No operator commit touches
+  `app/` or `tests/`. The gate is OS accounts, token permissions and branch protection, not cryptographic separation. The agents'
+  token needs Contents write, which is also what a merge needs, so assume it can merge a green PR. Whether it could also bypass the
+  gates must be tested when it exists. Turning `enforce_admins` on removes that bypass.
 - **Security limits.** Builders can read their own model keys and GitHub token from their shell. Prompt injection is reduced,
   not removed. A candidate written to target the canary could evade it, though it must still pass the runner's own HTTP checks
   and the owner's reading of the diff. The receipt covers the PR head, not the merged result. Details are in
@@ -316,29 +336,37 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
 - **Free-tier capacity** sets the pace: 20 requests/day on flash and 500/day on flash-lite per project,
   per-minute limits on top, and 50/day on OpenRouter. Gemma's 16,000 input tokens/min rules it out for
   agents whose prompts run about 25k tokens.
-- **Known product warts, left on purpose.** After a click the browser stays on `/run-now`, because our gate
-  once could not follow a redirect and pushed the builder away from one. Timestamps are raw ISO. The page
-  has no dark-mode styling. Each app restart adds a run, because the scheduler ticks at startup. Keeping
-  the core small mattered more than fixing these.
+- **Known product defects, queued for the agents.** After any run with 0 new items, no item or link is left on the page. The first
+  run is marked only by a badge. After a click the browser stays on `/run-now`, because our gate once could not follow a redirect
+  and pushed the builder away from one, and that URL shows raw JSON if opened directly. Timestamps are raw ISO. A database error during
+  a run gives a 500 and stores no row. These are [#21](https://github.com/ambativachan8-cmyk/daily-briefing/issues/21),
+  [#22](https://github.com/ambativachan8-cmyk/daily-briefing/issues/22) and [#24](https://github.com/ambativachan8-cmyk/daily-briefing/issues/24).
+  They were found after the team stopped, and the operator did not fix them because agents write the product code.
+  Each app restart also adds a run, because the scheduler ticks at startup.
 - **The feed is synthetic,** as the brief allows: one made-up item every 6 hours, matched by a 6-hour
   schedule. A run right after another finds nothing new, as in the brief's example.
 - **The fresh-VM test ran before NVIDIA was added.** `configure_models.sh` handles the key, and it ran on
   the real VM, but not on a fresh one.
 - **Schedule evidence.** Live history shows a tick exactly an hour after another (14:21:44 and 15:21:44
-  UTC), under the earlier hourly setting. The 6-hour setting was applied at 15:28 UTC, and its first tick
-  is due at 21:28 UTC, after this report was written.
-- **Test debts the reviewer flagged.** If the overlap guard were ever removed, A8 would hang rather than
-  fail cleanly. `tests/test_main.py` and `tests/test_scheduler.py` still write to the local
-  `data/briefing.db` of whichever checkout runs them; the live app runs from its own checkout.
+  UTC), under the earlier hourly setting. The scheduler runs in the web process and starts over at each restart. An earlier
+  version of this report promised a tick at 21:28 UTC, which was wrong: the service restarted at 20:32:42 UTC, so the next one is
+  due about 02:32 UTC on 2026-11-06. The page does not mark which rows were scheduled.
+- **Test debts.** `tests/test_main.py` and `tests/test_scheduler.py` empty the `data/briefing.db` of whichever
+  checkout runs them. A deployed release links `data/` to production, so running the suite there would have erased the public
+  history. Releases now leave `tests/` out, and it has been moved off the live release. 8 of 25 deliberately broken versions still
+  pass the suite, including a missing date and a scheduler that stops after one tick. `verify_pr.sh` covers only some of them.
+  Removing the overlap guard makes A8 hang rather than fail. All of this is ticket [#23](https://github.com/ambativachan8-cmyk/daily-briefing/issues/23).
 - **Token counts for OpenClaw on NVIDIA are estimates.** That runtime reports zero tokens for NVIDIA.
-- **AWS instead of Oracle.** The brief's plan B: the AWS Free-plan account is locked to `ap-southeast-2`,
-  and Terraform targets that region.
+- **AWS instead of Oracle.** The brief's plan B, chosen up front: the owner compared Oracle Always Free with an existing AWS
+  Free plan on day one and took AWS. Oracle's capacity limits were not what forced it, so this is a departure from the brief's order.
+  The account is locked to `ap-southeast-2`, and Terraform targets that region. It spends Free-plan credits, not a card.
 
 ## 7. Reproduce
 
 ```bash
 cd infra && cp terraform.tfvars.example terraform.tfvars   # set admin_cidr, key path
 terraform init && terraform apply
+ssh ubuntu@<ip> 'cloud-init status --wait'                 # first boot installs git, gh and Python
 ssh ubuntu@<ip> 'git clone https://github.com/ambativachan8-cmyk/daily-briefing ~/agents/_src &&
   bash ~/agents/_src/scripts/init_secrets.sh prepare'      # creates ~/.secrets as 0700, which scp needs
 scp agents/agents.env.example ubuntu@<ip>:~/.secrets/agents.env   # then fill in free-tier keys and both GitHub tokens
@@ -355,7 +383,37 @@ ssh ubuntu@<ip> 'bash ~/agents/_src/scripts/init_secrets.sh verify'
 Automation stays off until the owner removes the hold file and runs `install_dispatch_timer.sh --enable`. Plan a new project
 with an explicit `dispatch.sh manager`. Agent dashboards stay on loopback; reach them with the tunnel from `terraform output`.
 
-**What has been tested.** On 2026-11-05 the earlier scripts ran end to end on a fresh VM (`terraform apply` plus `install_all.sh`,
+**Run only the product, with no cloud.** Use a fresh clone: the suite empties `data/briefing.db` in the checkout it runs in.
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+```
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+```bash
+rm -f data/briefing.db && .venv/bin/uvicorn app.main:app --port 8000
+```
+
+**Run the team from your own fork.** The repository name is hard-coded, and nothing creates the labels or the protection. These
+steps were written from the real repository's settings, and have not been run on a fork.
+
+```bash
+git grep -l ambativachan8-cmyk/daily-briefing -- scripts agents | xargs sed -i 's#ambativachan8-cmyk/daily-briefing#YOU/REPO#g'
+```
+
+```bash
+for l in role:manager role:backend role:ui role:reviewer role:tester status:ready status:in-progress status:in-review status:changes-requested status:test-failed status:testing status:ready-to-merge status:done type:feature type:bug type:chore blocked; do gh label create "$l" --repo YOU/REPO --force; done
+```
+
+```bash
+gh api -X PUT repos/YOU/REPO/branches/main/protection --input - <<< '{"required_status_checks":{"strict":false,"contexts":["agent/review","agent/test"]},"enforce_admins":false,"required_pull_request_reviews":null,"restrictions":null}'
+```
+
+**What has been tested.** `terraform init` passes on real Linux with the lock file for five platforms
+([log](docs/evidence/terraform-lock-linux.log)). On 2026-11-05 the earlier scripts ran end to end on a fresh VM (`terraform apply` plus `install_all.sh`,
 about 8 minutes), with dummy model keys and a stubbed `gh auth`, then that VM was destroyed. **The setup as changed by the security
 fix has not been run on a fresh EC2 instance.** Its parts were tested separately: `security/fresh_setup_check.sh` covers secret-directory
 permissions, the order of the GitHub login steps and that no value reaches output or a command line, on a new home directory with

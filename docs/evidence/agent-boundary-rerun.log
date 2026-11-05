@@ -1,0 +1,36 @@
+== positive controls: without these, a broken probe would make every denial below look proven
+  PROVEN  probes really run as the agent user
+  PROVEN  the agent user can read its own home
+  PROVEN  the owner can read what the agent is denied
+== accounts
+  PROVEN  agent belongs only to its own group
+  PROVEN  candidate belongs only to its own group
+  PROVEN  candidate has no login shell
+  PROVEN  /home/ubuntu is closed to other users
+  PROVEN  agent cannot: use sudo
+  PROVEN  agent cannot: switch to ubuntu with su
+== control plane
+  PROVEN  agent cannot: read the control secrets
+  PROVEN  agent cannot: read the control gh login
+  PROVEN  agent cannot: list approvals
+  PROVEN  agent cannot: list receipts
+  PROVEN  agent cannot: write an approval
+  PROVEN  agent cannot: write a receipt
+  PROVEN  agent cannot: run the approval script
+  PROVEN  agent cannot: run the verdict script
+  PROVEN  agent cannot: edit the dispatcher
+== production
+  PROVEN  agent cannot: read the production database
+  PROVEN  agent cannot: write into the production database directory
+  PROVEN  agent cannot: read host logs
+  PROVEN  agent cannot: change the serving release
+  PROVEN  agent cannot: stop the production service
+  PROVEN  agent cannot: write to the sandbox's wheel directory
+== no AWS credentials on this host
+  PROVEN  the instance has no IAM role
+  PROVEN  no ~/.aws for ubuntu
+  PROVEN  agent cannot: find ~/.aws
+== the control token is not on the agent account
+  PROVEN  no file under /home/agent contains the control token
+
+agent boundary: 0 failed

@@ -1,7 +1,10 @@
 # Agent team
 
-Sanitized configuration, prompts and skills for each agent. Secrets are never stored here;
-they live in `~/.secrets/agents.env` on the VM (git-ignored, not in this repo).
+Sanitized configuration and prompts for each agent. There are no custom skills. Secrets are never stored here;
+they live in `~/.secrets/agents.env` on the VM (git-ignored, not in this repo). The prompts here are the current ones. The
+ones that produced tickets #1 to #19 are in git history at `e2a83ce`.
+
+**The table below is the first model plan, kept as history. The current roster is in [DELIVERY.md](../DELIVERY.md), section 1.**
 
 | Agent | Runtime | Role | Prompt | Model (primary → fallbacks) |
 |---|---|---|---|---|
