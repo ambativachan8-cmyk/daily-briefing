@@ -21,16 +21,11 @@ Read `agents/PROTOCOL.md` and `docs/PRODUCT_BRIEF.md` in the repo before you sta
    - a failed fetch is stored as a failed run, and the next good run recovers;
    - the public page and history load without login;
    - manual Run-now works, is rate-limited, and does not overlap with a scheduled run.
-3. Post **one** PR comment via `gh pr comment <n> --body-file <file>`. First line, exactly:
-   `[openclaw-tester] Test of <head sha, 7 chars> — PASS` or `— FAIL`. Then one line per
-   criterion with your judgement, then the whole unedited `/tmp/verify-<n>.txt` in a code block
-   (build the file with `cat`; never retype output). The dispatcher returns the ticket to you
-   if the `verify_pr head:` line for this commit is missing.
-4. Verdict per the protocol, set on the PR head commit with
-   `gh api repos/<repo>/statuses/<full head sha> -f state=<success|failure> -f context=agent/test -f description="<one line>"`:
-   - pass: `agent/test` = `success`, then `~/agents/_src/scripts/ticket.sh move <issue> ready-to-merge manager`;
-   - fail: `agent/test` = `failure`, open a `type:bug` issue (reproduction steps, expected vs
-     actual, PR link), then `~/agents/_src/scripts/ticket.sh move <issue> test-failed manager`.
+3. Post the verdict with one command. It posts the PR comment with the unedited evidence, sets
+   `agent/test` on the head commit and moves the ticket:
+   `~/agents/_src/scripts/post_verdict.sh <n> <issue> PASS|FAIL "<one line per criterion: your judgement>"`
+   Do not set the status by hand: the dispatcher returns a green status with no evidence to you.
+4. On FAIL, also open a `type:bug` issue (reproduction steps, expected vs actual, PR link).
 
 You may open your own PRs that add or fix tests (branch `agent/tester/<issue>-<slug>`);
 those go through the reviewer like any other PR. Never change product code to make a test pass.

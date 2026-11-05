@@ -22,12 +22,14 @@ printf '%s\n' "$GH_TOKEN" | env -u GH_TOKEN gh auth login --with-token --hostnam
 #
 # Measured 2026-11-05: quota buckets are shared across model names. A gemini-3.5-flash call is
 # charged to gemini-3.6-flash, and gemini-3.7-flash to gemini-3.8-flash, so each pair appears once.
-# The reviewer has no flash-lite entry: a lite model approved work a flash model rejected, so
-# reviews wait for quota rather than silently lowering the gate. The manager's remaining work is
-# routine triage and takes the cheapest models.
+# Flash-lite is not held to the 20/day limit: 3.1-flash-lite took 44 calls and then a burst of 18
+# on 2026-11-05. It is the abundant tier and flash is the scarce one, so the reviewer takes flash
+# first and lite last. A lite model once approved work a flash model rejected, so a lite approval
+# has to carry quoted probes and clean-checkout output, which the dispatcher checks, and the human
+# verifies independently before merging. The manager's remaining work is routine triage.
 declare -A H_PRIMARY=([manager]="gemini-3.5-flash-lite" [reviewer]="gemini-3-flash-preview")
 declare -A H_FALLBACK=([manager]="gemini-3.1-flash-lite"
-                       [reviewer]="gemini-3.8-flash,gemini-3.6-flash")
+                       [reviewer]="gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite")
 HPY=/usr/bin/python3   # system python; PyYAML ships with cloud-init on Ubuntu
 
 for id in manager reviewer; do

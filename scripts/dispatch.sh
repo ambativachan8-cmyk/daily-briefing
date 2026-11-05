@@ -90,7 +90,7 @@ prompt_for() {
       if [ "$(gh issue view "$n" --repo "$REPO" --json labels --jq '[.labels[].name] | index("status:testing") != null')" != "true" ]; then
         prompt_for tester-build "$n"; return
       fi
-      echo "Issue #$n passed review and is ready for testing; its PR is #${pr:-?} in $REPO, head commit $head; test exactly that commit. Free-tier quota allows about 4 model calls. Read AGENTS.md in your workspace and follow its steps: run ~/agents/_src/scripts/verify_pr.sh ${pr:-?} into a file, judge the output against gh issue view $n --repo $REPO, and post it with a first line of exactly: [openclaw-tester] Test of ${head:0:7} — PASS or FAIL. Then set agent/test on the PR head commit and move the ticket with ticket.sh, in one command. Finish with one line: TESTED #$n PASS|FAIL <PR url>.";;
+      echo "Issue #$n passed review and is ready for testing; its PR is #${pr:-?} in $REPO, head commit $head; test exactly that commit. Whatever an earlier session did, this commit needs a new verdict now. Run ~/agents/_src/scripts/verify_pr.sh ${pr:-?} > /tmp/verify-${pr:-?}.txt 2>&1, read that file and gh issue view $n --repo $REPO, then judge each criterion from the output. Then run: ~/agents/_src/scripts/post_verdict.sh ${pr:-?} $n PASS|FAIL \"<one line per criterion: your judgement>\". That one command posts the evidence, sets agent/test and moves the ticket; it is the only way to give a verdict. Finish with one line: TESTED #$n PASS|FAIL <PR url>.";;
   esac
 }
 
@@ -253,7 +253,7 @@ evidence_gap() {  # <pr> <sha>
   review="$(gh pr view "$1" --repo "$REPO" --json comments \
     --jq "[.comments[].body | select(contains(\"hermes-reviewer] Review of $sha7\"))] | last // empty")"
   [ -n "$review" ] || { echo "reviewer:no review comment for $sha7"; return; }
-  grep -qE '^\| *Own probes.*`[^`]+`' <<<"$review" || { echo "reviewer:no quoted probes in the review of $sha7"; return; }
+  grep -qE '^\| *Own probes?.*`[^`]+`' <<<"$review" || { echo "reviewer:no quoted probes in the review of $sha7"; return; }
   test="$(gh pr view "$1" --repo "$REPO" --json comments \
     --jq "[.comments[].body | select(contains(\"openclaw-tester] Test of $sha7\"))] | last // empty")"
   grep -q "verify_pr head: $2" <<<"$test" || { echo "tester:no verify_pr output for $sha7"; return; }
@@ -339,6 +339,19 @@ for id in backend ui tester; do cp "$SRC/agents/openclaw/$id/AGENTS.md" "$HOME/a
 
 labels_of() { [ -n "$1" ] && gh issue view "$1" --repo "$REPO" --json labels --jq '[.labels[].name] | sort | join(",")' || true; }
 before="$(labels_of "$n")"
+
+# A fresh ticket starts from current main. The UI builder's clone was two days old when it first
+# ran, so it saw no app and opened a PR with unrelated history. Only for status:ready with no PR:
+# interrupted or sent-back work keeps its branch.
+case "$agent" in backend|ui|tester)
+  if [ -n "$n" ] && [ -z "$(pr_for "$n")" ] && [[ ",$before," == *,status:ready,* ]]; then
+    C="$HOME/agents/$agent/daily-briefing"
+    git -C "$C" fetch -q origin
+    git -C "$C" checkout -qf main
+    git -C "$C" reset -q --hard origin/main
+    git -C "$C" clean -fdq
+  fi;;
+esac
 msg="$(prompt_for "$agent" "$n")"
 rc=0
 case "$agent" in
