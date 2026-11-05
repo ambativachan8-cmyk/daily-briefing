@@ -90,28 +90,28 @@ if grep -qi '<html' <<<"$FIRST"; then
     echo "  MISSING a form that posts Run now"; PAGE_RESULT=fail
   else
     before="$(runs_count)"
-    landed="$(curl -s -L -X POST "$U$ACTION")"
+    landed="$(curl -s -L -d "" "$U$ACTION")"
     expect "Run now adds one history row" "$(runs_count)" "$(( before + 1 ))"
     page_check "Run now returns to the page" '<html' "$landed"
     page_check "a run with nothing new says so" '0 new|no new|nothing new' "$(curl -s "$U/")"
     before="$(runs_count)"
-    second="$(curl -s -L -X POST "$U$ACTION")"
+    second="$(curl -s -L -d "" "$U$ACTION")"
     expect "an immediate second Run now adds no row" "$(runs_count)" "$before"
     page_check "the limited attempt stays on the page" '<html' "$second"
     page_check "the limited attempt tells the user" 'try again|rate.?limit|wait|too (soon|many)|busy' "$second"
     curl -s -o /dev/null -X POST "$U/ingest"
     expect "POST /ingest is no way around the limit" "$(runs_count)" "$before"
     sleep 10
-    curl -s -L -o /dev/null -X POST "$U$ACTION"
+    curl -s -L -o /dev/null -d "" "$U$ACTION"
     expect "the limit is a minute: a retry after 10 s adds no row" "$(runs_count)" "$before"
     echo "  (waiting out the 1-minute limit for the failure and recovery checks)"
     sleep 52
     .venv/bin/python -m app.ops fail-next >/dev/null
-    curl -s -L -o /dev/null -X POST "$U$ACTION"
+    curl -s -L -o /dev/null -d "" "$U$ACTION"
     expect "a failed fetch is stored as a failed run" "$(first_status)" failed
     page_check "the failed run shows a cross" '✗|&cross;|&#10007;|&#x2717;' "$(curl -s "$U/")"
     sleep 61
-    curl -s -L -o /dev/null -X POST "$U$ACTION"
+    curl -s -L -o /dev/null -d "" "$U$ACTION"
     expect "the next good run succeeds" "$(first_status)" success
   fi
 

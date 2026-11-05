@@ -261,7 +261,8 @@ evidence_gap() {  # <pr> <sha>
   review="$(gh pr view "$1" --repo "$REPO" --json comments \
     --jq "[.comments[].body | select(contains(\"hermes-reviewer] Review of $sha7\"))] | last // empty")"
   [ -n "$review" ] || { echo "reviewer:no review comment for $sha7"; return; }
-  grep -qE '^\| *Own probes?.*`[^`]+`' <<<"$review" || { echo "reviewer:no quoted probes in the review of $sha7"; return; }
+  # The row must carry evidence or point to it: only a blank row fails, as `|  →  |` once did.
+  grep -qE '^\| *Own probes?[^|]*\|[^|]*\|[^|]*[[:alnum:]]{3,}' <<<"$review" || { echo "reviewer:no quoted probes in the review of $sha7"; return; }
   test="$(gh pr view "$1" --repo "$REPO" --json comments \
     --jq "[.comments[].body | select(contains(\"openclaw-tester] Test of $sha7\"))] | last // empty")"
   grep -q "verify_pr head: $2" <<<"$test" || { echo "tester:no verify_pr output for $sha7"; return; }
