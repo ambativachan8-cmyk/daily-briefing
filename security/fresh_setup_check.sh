@@ -21,7 +21,10 @@ echo "gh \$*" >> "$W/gh.log"
 case "\$1 \$2" in "auth login") cat > "$W/gh-stdin"; echo "login token-from-env=\${GH_TOKEN:+set}" >> "$W/gh.log";; esac
 exit 0
 EOF
-chmod +x "$H/bin/gh"
+printf '#!/bin/sh
+exit 0
+' > "$H/bin/systemctl"   # no user bus in this environment, and never the real manager
+chmod +x "$H/bin/gh" "$H/bin/systemctl"
 run() { env -i HOME="$H" PATH="$H/bin:/usr/bin:/bin" AGENT_HOME="$AGENT_DIR" bash "$SCRIPT" "$@" 2>&1; }
 
 echo "== a fresh VM has no ~/.secrets"
