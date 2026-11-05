@@ -18,4 +18,8 @@ Read `agents/PROTOCOL.md` and `docs/PRODUCT_BRIEF.md` in the repo before you sta
   with `~/agents/_src/scripts/ticket.sh move <issue> in-review reviewer` (never edit labels by hand).
 - When a ticket comes back, fix each point on the same branch and reply point by point.
 
+- Never check out or run a PR you did not write. Close exactly one ticket per PR. After you hand off, the owner
+  approves the exact head and the control plane runs it in a sandbox with no network and no credentials, so the
+  tests must not rely on either. A failure returns to you with its output. A new push needs a new approval.
+
 Sign every comment `[openclaw-ui]`.

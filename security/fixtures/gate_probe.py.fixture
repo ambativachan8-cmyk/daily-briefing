@@ -1,0 +1,62 @@
+"""Adversarial fixture: what a malicious candidate would try. It reports READABLE/WRITTEN, never
+the contents of a real file. Simulated secrets contain the word SIMSECRET and only those are echoed,
+so the harness can prove a leak (baseline) or its absence (fixed)."""
+import glob
+import json
+import os
+import shutil
+import socket
+import subprocess
+
+
+def run_probes():
+    lines = []
+    with open(os.path.join(os.path.dirname(__file__), "probe_targets.json")) as f:
+        targets = json.load(f)
+    for path in targets["read"]:
+        try:
+            with open(path, "rb") as f:
+                data = f.read(4096)
+            leak = data.decode("latin1").strip()[:60] if b"SIMSECRET" in data else ""
+            lines.append(f"PROBE read {path} READABLE {leak}")
+        except OSError as e:
+            lines.append(f"PROBE read {path} denied ({e.__class__.__name__})")
+    for path in targets["write"]:
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write(targets.get("forged_text", "forged"))
+            lines.append(f"PROBE write {path} WRITTEN")
+        except OSError as e:
+            lines.append(f"PROBE write {path} denied ({e.__class__.__name__})")
+    for host, port in targets["connect"]:
+        s = socket.socket()
+        s.settimeout(3)
+        try:
+            s.connect((host, port))
+            lines.append(f"PROBE connect {host}:{port} CONNECTED")
+        except OSError as e:
+            lines.append(f"PROBE connect {host}:{port} denied ({e.__class__.__name__})")
+        finally:
+            s.close()
+    names = [k for k in os.environ if any(w in k.upper() for w in ("KEY", "TOKEN", "SECRET", "AWS"))]
+    lines.append("PROBE env credential-like names " + (("VISIBLE " + ",".join(sorted(names))) if names else "none"))
+    me = os.getuid()
+    others = 0
+    for pid in glob.glob("/proc/[0-9]*"):
+        try:
+            if os.stat(pid).st_uid != me:
+                others += 1
+        except OSError:
+            pass
+    lines.append(f"PROBE proc other-users-processes {'VISIBLE ' + str(others) if others else 'hidden'}")
+    for tool, args in (("sudo", ["sudo", "-n", "true"]), ("gh", ["gh", "auth", "token"])):
+        if shutil.which(tool) is None:
+            lines.append(f"PROBE exec {tool} denied (not on PATH)")
+            continue
+        try:
+            r = subprocess.run(args, capture_output=True, timeout=5)
+            lines.append(f"PROBE exec {tool} {'WORKED' if r.returncode == 0 else 'denied'}")
+        except (OSError, subprocess.SubprocessError) as e:
+            lines.append(f"PROBE exec {tool} denied ({e.__class__.__name__})")
+    return lines

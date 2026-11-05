@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Creates the five agent identities on the VM. Idempotent; run after vm_bootstrap.sh.
+# Creates the five agent identities. Runs as the `agent` account (see install_all.sh). Idempotent; run
+# after vm_bootstrap.sh. configure_models.sh then logs gh in and connects git to it.
 #
 #   ~/agents/<id>/                 agent workspace (role prompt lives here)
 #   ~/agents/<id>/daily-briefing/  the agent's own clone, own git author, no pushes to main
@@ -10,7 +11,7 @@ set -euo pipefail
 export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
 
 REPO_URL="https://github.com/ambativachan8-cmyk/daily-briefing.git"
-SRC="$HOME/agents/_src"   # read-only copy of the repo used to source prompts
+SRC="$HOME/agents/_src"   # the agents' copy of the repo, used to source prompts; it has no authority
 
 declare -A NAME=(
   [manager]="Hermes Manager"   [reviewer]="Hermes Reviewer"
@@ -24,10 +25,7 @@ declare -A EMAIL=(
   [tester]="openclaw-tester@agents.daily-briefing.invalid"
 )
 
-if [ -d "$SRC/.git" ]; then git -C "$SRC" pull -q --ff-only; else git clone -q "$REPO_URL" "$SRC"; fi
-
-# git over HTTPS authenticates through gh, which reads GH_TOKEN from each agent's env
-gh auth setup-git >/dev/null 2>&1 || true
+if [ -d "$SRC/.git" ]; then git -C "$SRC" pull -q --ff-only || true; else git clone -q "$REPO_URL" "$SRC"; fi
 
 make_workspace() {
   local id="$1" ws="$HOME/agents/$1" clone="$HOME/agents/$1/daily-briefing"
@@ -63,7 +61,9 @@ if [ ! -f "$HOME/.openclaw/openclaw.json" ]; then
     --auth-choice skip --gateway-bind loopback --install-daemon \
     --skip-channels --skip-bootstrap
 fi
-for id in backend ui tester; do
+# tester-judge is the tester's verdict mode: same model plan, no tools (see configure_models.sh).
+mkdir -p "$HOME/agents/tester-judge"
+for id in backend ui tester tester-judge; do
   if ! openclaw agents list --json 2>/dev/null | grep -q "\"$id\""; then
     openclaw agents add "$id" --non-interactive --workspace "$HOME/agents/$id"
   fi
