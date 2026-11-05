@@ -69,6 +69,13 @@ if grep -qi '<html' <<<"$FIRST"; then
   page_check "history row marked with a check mark" '✓|&check;|&#10003;|&#x2713;' "$FIRST"
   page_check "Run now control" 'run now' "$FIRST"
   grep -qiE 'fetch\(|XMLHttpRequest' <<<"$FIRST" && echo "  note    the page uses JavaScript to load data"
+  # curl cannot run JavaScript, so a script that hijacks the form would pass every check below
+  # while the button fails in a browser (it did, on PR #18).
+  if grep -qiE 'preventDefault|addEventListener\(.submit' <<<"$FIRST"; then
+    echo "  MISSING a Run now form that works without a script intercepting it"; PAGE_RESULT=fail
+  else
+    echo "  ok      no script intercepts the Run now form"
+  fi
 
   # Use Run now the way a visitor does: post the page's own form, then read the page again.
   U="http://127.0.0.1:$PORT"
