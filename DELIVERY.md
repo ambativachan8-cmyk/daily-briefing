@@ -1,7 +1,7 @@
 # Delivery report — Daily Briefing (Confer take-home #3)
 
 > **Status: the product is live. Agent automation is paused pending the owner's decision.** This file states only what
-> has been verified. Last updated 2026-11-05 21:20 UTC.
+> has been verified. Last updated 2026-11-05 21:10 UTC.
 > Every required product item works: scheduled and manual runs, stored history, stable-ID dedup, a dated public
 > briefing, failure and recovery, and A1–A8. Section 6 lists the limits. The team needed more human
 > correction than we wanted, and section 4 says where. **An external audit then found that the agent workflow
