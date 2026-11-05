@@ -7,10 +7,13 @@ from time import time
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.templating import Jinja2Templates
 
 from app.db import cleanup_stale_runs, get_items_by_run, get_runs, get_run, init_db
 from app.feed import _check_feed_fail_config, fetch_feed, get_feed_items, ingest_feed
 from app.scheduler import start_scheduler, stop_scheduler
+
+templates = Jinja2Templates(directory="app/templates")
 
 # Simple in-memory rate limiter for /ingest endpoint
 _ingest_last_call: dict[str, float] = {}
@@ -59,9 +62,9 @@ async def health_check():
 
 
 @app.get("/")
-async def root():
+async def root(request: Request):
     """Root endpoint."""
-    return {"message": "Daily Briefing API", "version": "0.1.0"}
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
 @app.get("/feed")
