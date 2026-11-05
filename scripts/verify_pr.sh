@@ -21,7 +21,8 @@ if [ -z "${VERIFY_PR_INNER:-}" ]; then
   grep -qE "^verify_pr result: pytest=0 health=200 page=(ok|n/a) " "$CACHE"
   exit $?
 fi
-PORT=$(( 18000 + PR ))
+# A free port: a fixed one could reach a process left over from an earlier run and test the wrong app.
+PORT="$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
 W="$(mktemp -d)"; APP_PID=""
 cleanup() { [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null; rm -rf "$W"; }
 trap cleanup EXIT
@@ -82,17 +83,22 @@ if grep -qi '<html' <<<"$FIRST"; then
     echo "  MISSING a form that posts Run now"; PAGE_RESULT=fail
   else
     before="$(runs_count)"
-    curl -s -L -o /dev/null -X POST "$U$ACTION"
+    landed="$(curl -s -L -X POST "$U$ACTION")"
     expect "Run now adds one history row" "$(runs_count)" "$(( before + 1 ))"
+    page_check "Run now returns to the page" '<html' "$landed"
     page_check "a run with nothing new says so" '0 new|no new|nothing new' "$(curl -s "$U/")"
     before="$(runs_count)"
     second="$(curl -s -L -X POST "$U$ACTION")"
     expect "an immediate second Run now adds no row" "$(runs_count)" "$before"
+    page_check "the limited attempt stays on the page" '<html' "$second"
     page_check "the limited attempt tells the user" 'try again|rate.?limit|wait|too (soon|many)|busy' "$second"
     curl -s -o /dev/null -X POST "$U/ingest"
     expect "POST /ingest is no way around the limit" "$(runs_count)" "$before"
+    sleep 10
+    curl -s -L -o /dev/null -X POST "$U$ACTION"
+    expect "the limit is a minute: a retry after 10 s adds no row" "$(runs_count)" "$before"
     echo "  (waiting out the 1-minute limit for the failure and recovery checks)"
-    sleep 61
+    sleep 52
     .venv/bin/python -m app.ops fail-next >/dev/null
     curl -s -L -o /dev/null -X POST "$U$ACTION"
     expect "a failed fetch is stored as a failed run" "$(first_status)" failed
@@ -101,6 +107,26 @@ if grep -qi '<html' <<<"$FIRST"; then
     curl -s -L -o /dev/null -X POST "$U$ACTION"
     expect "the next good run succeeds" "$(first_status)" success
   fi
+
+  # The brief's core: only what is new. Restart on a controlled feed, so each start's scheduler tick
+  # is one run, and count the new-item links in the latest briefing.
+  echo; echo "What is new, by item links on the page (A1 to A5):"
+  feed_run() {  # <label> <item numbers, comma-separated> <wanted links>
+    kill "$APP_PID" 2>/dev/null; wait "$APP_PID" 2>/dev/null
+    FEED_ITEMS_JSON="$(python3 -c 'import json, sys; print(json.dumps([{"id": f"item-{i}", "title": f"Item {i}", "link": f"https://example.com/item-{i}"} for i in sys.argv[1].split(",")]))' "$2")" \
+      .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port "$PORT" --log-level warning >>"$W/app.log" 2>&1 &
+    APP_PID=$!
+    for _ in $(seq 1 20); do curl -fs "$U/health" >/dev/null 2>&1 && break; sleep 1; done
+    sleep 1
+    expect "$1" "$(curl -s "$U/" | grep -oE 'href="https://example\.com/item-[0-9]+"' | wc -l)" "$3"
+  }
+  kill "$APP_PID" 2>/dev/null; wait "$APP_PID" 2>/dev/null; rm -rf data; APP_PID=""
+  feed_run "A1 first run on 3 items shows 3" 1,2,3 3
+  feed_run "A2 same feed shows 0" 1,2,3 0
+  feed_run "A3 different order shows 0" 3,1,2 0
+  feed_run "A4 one item added shows exactly 1" 1,2,3,4 1
+  feed_run "item removed shows 0" 2,3,4 0
+  feed_run "A5 removed item coming back shows 0" 1,2,3,4 0
 else
   PAGE_RESULT=n/a; echo; echo "Page checks skipped: / is not an HTML page yet."
 fi
