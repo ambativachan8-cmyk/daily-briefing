@@ -18,6 +18,12 @@ for account in agent candidate; do
 done
 sudo loginctl enable-linger agent
 
+# The runtime installers run as `agent`, without sudo, so anything they would apt-install comes first.
+if ! command -v node >/dev/null; then
+  curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash - >/dev/null
+  sudo apt-get install -y -q nodejs >/dev/null
+fi
+
 sudo chmod 750 "$HOME"
 sudo chmod 750 /home/agent
 install -d -m 700 "$HOME/.secrets" "$HOME/control"

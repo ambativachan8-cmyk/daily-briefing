@@ -117,7 +117,7 @@ cat > /tmp/openclaw-models.json5 <<EOF
   ui:      { model: $(model_json "${UI[@]}") },
   tester:  { model: $(model_json "${TESTER[@]}") },
   // Judges a sandboxed run from evidence given in the prompt. It must not be able to run anything.
-  "tester-judge": { model: $(model_json "${TESTER[@]}"), tools: { profile: "minimal", deny: ["*"] } },
+  "tester-judge": { model: $(model_json "${TESTER[@]}"), tools: { profile: "minimal", deny: ["*"], exec: { security: "deny" } } },
 } } }
 EOF
 openclaw config patch --file /tmp/openclaw-models.json5

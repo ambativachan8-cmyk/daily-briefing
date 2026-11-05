@@ -55,7 +55,7 @@ migrate_agents() {
   sudo find "$AGENT_HOME" -xdev -type l -lname '/home/ubuntu/*' -print0 | while IFS= read -r -d '' link; do
     target="$(sudo readlink "$link")"; sudo ln -sfn "${target/#\/home\/ubuntu/$AGENT_HOME}" "$link"
   done
-  sudo grep -rlI --null --exclude-dir=sessions --exclude-dir=logs --exclude-dir=node_modules --exclude-dir=__pycache__ \
+  sudo grep -rlI --null --exclude-dir=daily-briefing --exclude-dir=_src --exclude-dir=sessions --exclude-dir=logs --exclude-dir=node_modules --exclude-dir=__pycache__ \
     --exclude='*.db' --exclude='*.jsonl' '/home/ubuntu' "$AGENT_HOME" | sudo xargs -0 -r sed -i 's#/home/ubuntu#/home/agent#g'
   sudo chown -R agent:agent "$AGENT_HOME"
   sudo chmod 750 "$AGENT_HOME"
