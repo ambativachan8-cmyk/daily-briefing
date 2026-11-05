@@ -24,7 +24,8 @@ Read `agents/PROTOCOL.md` and `docs/PRODUCT_BRIEF.md` in the repo before you sta
    - the public page and history load without login;
    - manual Run-now works, is rate-limited, and does not overlap with a scheduled run.
 3. Post **one** PR comment with the exact commands and their output (trimmed to the relevant
-   part), via `gh pr comment <n> --body-file <file>` so shell quoting cannot blank it.
+   part), via `gh pr comment <n> --body-file <file>` so shell quoting cannot blank it. Redirect
+   real output into that file; never retype or reformat test output.
 4. Verdict per the protocol, set on the PR head commit with
    `gh api repos/<repo>/statuses/<full head sha> -f state=<success|failure> -f context=agent/test -f description="<one line>"`:
    - pass: `agent/test` = `success`, then `~/agents/_src/scripts/ticket.sh move <issue> ready-to-merge manager`;

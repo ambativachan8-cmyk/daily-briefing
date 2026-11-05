@@ -242,12 +242,24 @@ latest_gates() {   # <sha> -> "agent/review=<state> agent/test=<state>" from the
               | map("\(.context)=\(.state)") | sort | join(" ")'
 }
 merge_decisions() {
-  local n pr sha gates evidence
+  local n pr sha gates evidence comments
   for n in $(gh issue list --repo "$REPO" --state open --label status:ready-to-merge --json number --jq '.[].number'); do
     pr="$(pr_for "$n")"; [ -n "$pr" ] || continue
     sha="$(gh pr view "$pr" --repo "$REPO" --json headRefOid --jq .headRefOid)"
     gates="$(latest_gates "$sha")"
     [ "$gates" = "agent/review=success agent/test=success" ] || { echo "PR #$pr not merge-ready at ${sha:0:7}: ${gates:-no gate statuses}"; continue; }
+    # A green status with no review comment for this head is not a review: send it back once,
+    # then park it for the human.
+    comments="$(gh pr view "$pr" --repo "$REPO" --json comments --jq '.comments[].body')"
+    if ! grep -q "hermes-reviewer\] Review of ${sha:0:7}" <<<"$comments"; then
+      if grep -q "no review comment for ${sha:0:7}" <<<"$comments"; then
+        gh issue edit "$n" --repo "$REPO" --add-label blocked >/dev/null
+      else
+        gh pr comment "$pr" --repo "$REPO" --body "[dispatcher] \`agent/review\` is success but there is no review comment for ${sha:0:7}. Returned to the reviewer." >/dev/null
+        "$HOME/agents/_src/scripts/ticket.sh" move "$n" in-review reviewer >/dev/null
+      fi
+      continue
+    fi
     # the head must not have moved while we checked
     [ "$(gh pr view "$pr" --repo "$REPO" --json state,headRefOid --jq '.state + " " + .headRefOid')" = "OPEN $sha" ] || continue
     gh pr view "$pr" --repo "$REPO" --json comments --jq '.comments[].body' | grep -q "Merge decision ready for $sha" && continue
