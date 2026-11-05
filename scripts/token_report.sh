@@ -20,7 +20,7 @@ OUT="${2:-$HOME/agents/_src/docs/TOKEN_REPORT.md}"
   echo
   echo "| Agent | Framework | Model | Runs | Model calls | Input tokens | Output tokens | Cache-read | Total | List-price estimate (USD) |"
   echo "|---|---|---|---:|---:|---:|---:|---:|---:|---:|"
-  jq -rs 'map(.model |= sub("^(google|openrouter)/"; "")) | group_by([.agent, .model]) | .[] |
+  jq -rs 'map(.model |= sub("^(google|openrouter|nvidia)/"; "")) | group_by([.agent, .model]) | .[] |
     [ .[0].agent, .[0].framework, (.[0].model // "?"), length,
       (map(.api_calls // .assistant_turns // 0) | add),
       (map(.input_tokens // 0) | add), (map(.output_tokens // 0) | add),

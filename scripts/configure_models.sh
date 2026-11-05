@@ -27,6 +27,15 @@ printf '%s\n' "$GH_TOKEN" | env -u GH_TOKEN gh auth login --with-token --hostnam
 # last. A lite model once approved work a flash model rejected, so a lite approval
 # has to carry quoted probes and clean-checkout output, which the dispatcher checks, and the human
 # verifies independently before merging. The manager's remaining work is routine triage.
+#
+# NVIDIA's hosted API comes first when its key is set (free, no daily cap observed). Tested
+# 2026-11-05 with a 31k-token prompt and a tool: nemotron-3-ultra called it correctly in 3.5 s and
+# glm-5.3-flash in 10 s. deepseek-v4.1-flash took 78 s; kimi-k2.6 returned 404 on this account.
+# Nemotron does the judgement work, and it is the model that already drove both runtimes through
+# OpenRouter. GLM takes routine triage and testing, and each is the other's fallback.
+NV_STRONG="nvidia/nemotron-3-ultra-550b-a55b"
+NV_ROUTINE="z-ai/glm-5.3-flash"
+NVIDIA_API_KEY="${NVIDIA_API_KEY:-}"
 declare -A H_PRIMARY=([manager]="gemini-3.5-flash-lite" [reviewer]="gemini-3-flash-preview")
 declare -A H_FALLBACK=([manager]="gemini-3.1-flash-lite"
                        [reviewer]="gemini-3.8-flash,gemini-3.6-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite")
@@ -38,17 +47,30 @@ for id in manager reviewer; do
   cat > "$P/.env" <<EOF
 GOOGLE_API_KEY=$GEMINI_API_KEY_HERMES
 OPENROUTER_API_KEY=$OPENROUTER_API_KEY
+NVIDIA_API_KEY=$NVIDIA_API_KEY
 GH_TOKEN=$GH_TOKEN
 EOF
   chmod 600 "$P/.env"
-  hermes -p "$id" config set model.provider gemini >/dev/null
-  hermes -p "$id" config set model.default "${H_PRIMARY[$id]}" >/dev/null
+  # NVIDIA chain for this role: primary, then fallback. Empty when no key is set.
+  NV_CHAIN=""
+  if [ -n "$NVIDIA_API_KEY" ]; then
+    if [ "$id" = manager ]; then NV_CHAIN="$NV_ROUTINE,$NV_STRONG"; else NV_CHAIN="$NV_STRONG,$NV_ROUTINE"; fi
+    hermes -p "$id" config set model.provider nvidia >/dev/null
+    hermes -p "$id" config set model.default "${NV_CHAIN%%,*}" >/dev/null
+  else
+    hermes -p "$id" config set model.provider gemini >/dev/null
+    hermes -p "$id" config set model.default "${H_PRIMARY[$id]}" >/dev/null
+  fi
   hermes -p "$id" config unset model.base_url >/dev/null 2>&1 || true
-  "$HPY" - "$P/config.yaml" "${H_FALLBACK[$id]}" "$OR_FALLBACK" <<'PY'
+  "$HPY" - "$P/config.yaml" "${H_PRIMARY[$id]},${H_FALLBACK[$id]}" "$OR_FALLBACK" "${NV_CHAIN#*,}" "$NVIDIA_API_KEY" <<'PY'
 import sys, yaml
-path, gems, orm = sys.argv[1:]
+path, gems, orm, nv_next, nv_key = sys.argv[1:]
 cfg = yaml.safe_load(open(path)) or {}
-cfg["fallback_providers"] = ([{"provider": "gemini", "model": m} for m in gems.split(",")]
+chain = [m for m in gems.split(",")]
+if not nv_key:
+    chain = chain[1:]   # the first Gemini model is already the primary
+cfg["fallback_providers"] = (([{"provider": "nvidia", "model": nv_next}] if nv_key else [])
+                             + [{"provider": "gemini", "model": m} for m in chain]
                              + [{"provider": "openrouter", "model": orm}])
 cfg.setdefault("fallback", {})["min_switch_reset_seconds"] = 90
 yaml.safe_dump(cfg, open(path, "w"), sort_keys=False)
@@ -60,20 +82,33 @@ umask 077
 cat > "$HOME/.openclaw/.env" <<EOF
 GEMINI_API_KEY=$GEMINI_API_KEY_OPENCLAW
 OPENROUTER_API_KEY=$OPENROUTER_API_KEY
+NVIDIA_API_KEY=$NVIDIA_API_KEY
 GH_TOKEN=$GH_TOKEN
 EOF
 chmod 600 "$HOME/.openclaw/.env"
 
 OR="openrouter/$OR_FALLBACK"
+G="google/gemini"
+BACKEND=("$G-3.6-flash" "$G-3.8-flash" "$G-3-flash-preview" "$G-3.5-flash-lite" "$G-3.1-flash-lite" "$OR")
+UI=("$G-3.8-flash" "$G-3.6-flash" "$G-3-flash-preview" "$G-3.5-flash-lite" "$G-3.1-flash-lite" "$OR")
+TESTER=("$G-3.5-flash-lite" "$G-3.1-flash-lite" "$OR")
+if [ -n "$NVIDIA_API_KEY" ]; then
+  BACKEND=("nvidia/$NV_STRONG" "nvidia/$NV_ROUTINE" "${BACKEND[@]}")
+  UI=("nvidia/$NV_STRONG" "nvidia/$NV_ROUTINE" "${UI[@]}")
+  TESTER=("nvidia/$NV_ROUTINE" "nvidia/$NV_STRONG" "${TESTER[@]}")
+fi
+model_json() {  # <model>...: first is the primary, the rest are fallbacks
+  local primary="$1"; shift
+  printf '{ primary: "%s", fallbacks: [' "$primary"
+  printf '"%s", ' "$@"
+  printf '] }'
+}
 cat > /tmp/openclaw-models.json5 <<EOF
 { tools: { profile: "coding" },
   agents: { entries: {
-  backend: { model: { primary: "google/gemini-3.6-flash",
-                      fallbacks: ["google/gemini-3.8-flash", "google/gemini-3-flash-preview", "google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite", "$OR"] } },
-  ui:      { model: { primary: "google/gemini-3.8-flash",
-                      fallbacks: ["google/gemini-3.6-flash", "google/gemini-3-flash-preview", "google/gemini-3.5-flash-lite", "google/gemini-3.1-flash-lite", "$OR"] } },
-  tester:  { model: { primary: "google/gemini-3.5-flash-lite",
-                      fallbacks: ["google/gemini-3.1-flash-lite", "$OR"] } },
+  backend: { model: $(model_json "${BACKEND[@]}") },
+  ui:      { model: $(model_json "${UI[@]}") },
+  tester:  { model: $(model_json "${TESTER[@]}") },
 } } }
 EOF
 openclaw config patch --file /tmp/openclaw-models.json5

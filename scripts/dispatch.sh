@@ -144,7 +144,7 @@ gemini_quota() {
 }
 
 # OpenRouter's free daily limit resets at 00:00 UTC, not at Gemini's reset.
-next_reset_for() { case "$1" in openrouter/*) date -u -d 'tomorrow 00:00' +%s;; *) next_reset;; esac; }
+next_reset_for() { case "$1" in openrouter/*) date -u -d 'tomorrow 00:00' +%s;; nvidia/*) echo $(( $(date +%s) + 900 ));; *) next_reset;; esac; }
 
 # OpenClaw does not switch models mid-turn once a tool has run (replay safety), so on a
 # quota error we resume the same session on the next model with remaining free quota.
@@ -182,6 +182,7 @@ $(cat "${out%.json}.err" 2>/dev/null)"
         # model for the day: a probe answered 200 straight after a model had been ledgered.
         case "$m" in
           google/*) [ "$(gemini_quota "${m#google/}")" = "day" ] || retried="" ;;
+          nvidia/*) retried="" ;;   # NVIDIA's limit is per minute: wait it out, never write it off for the day
         esac
         if [ -z "$retried" ] && [ "$waits" -lt 20 ]; then retried=1; waits=$((waits + 1)); sleep 65; continue; fi
         # per-day quota: Gemini free tier resets at midnight Pacific (08:00 UTC in winter)
@@ -201,6 +202,12 @@ $(cat "${out%.json}.err" 2>/dev/null)"
 # problem, needs a human) -> 1 h; 5xx, timeout, network error, malformed 200 -> 15 min.
 probe_hermes() {
   local agent="$1" m code body now t retry=0 reasons="" models
+  # NVIDIA first when configured: it is at the head of every chain and has no daily cap to wait for.
+  code="$(set -a; . "$HOME/.secrets/agents.env"; [ -n "${NVIDIA_API_KEY:-}" ] && curl -s --max-time 60 -o /dev/null -w '%{http_code}' \
+    -H "Authorization: Bearer $NVIDIA_API_KEY" -H 'content-type: application/json' \
+    -d '{"model":"nvidia/nemotron-3-ultra-550b-a55b","messages":[{"role":"user","content":"Reply with OK"}],"max_tokens":16}' \
+    https://integrate.api.nvidia.com/v1/chat/completions || true)"
+  if [ "$code" = 200 ]; then echo "$(date -u +%FT%TZ) $agent nvidia 200 ok" >> "$LOG/quota/probes.log"; echo "ok nvidia"; return; fi
   models="$(hermes -p "$agent" config get model.default
             /usr/bin/python3 -c 'import sys, yaml
 for e in (yaml.safe_load(open(sys.argv[1])) or {}).get("fallback_providers") or []:
