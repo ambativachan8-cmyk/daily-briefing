@@ -34,3 +34,10 @@ async def test_root_endpoint(async_client):
     data = response.json()
     assert data["message"] == "Daily Briefing API"
     assert data["version"] == "0.1.0"
+
+@pytest.mark.asyncio
+async def test_run_now(async_client):
+    """Test the run-now endpoint."""
+    response = await async_client.post("/run-now")
+    assert response.status_code == 200
+    assert "items" in response.json()
