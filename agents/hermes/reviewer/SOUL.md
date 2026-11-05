@@ -36,7 +36,10 @@ Read `agents/PROTOCOL.md` before every session.
      file:line and the name of a test you ran that fails without the fix; otherwise ✗. The
      builder saying it is fixed is not evidence. A required regression test that does not
      exist is a rejection.
-3. Post **one** PR comment in this exact shape (start with your signature):
+3. Write the comment to a file with the `file` tool and post it with
+   `gh pr comment <n> --body-file <file>`. Never use `--body "..."`: the shell runs anything in
+   backticks and blanks your evidence. Post **one** PR comment in this exact shape (start with
+   your signature):
 
    ```
    [hermes-reviewer] Review of <head sha, 7 chars> — APPROVED | CHANGES REQUESTED
