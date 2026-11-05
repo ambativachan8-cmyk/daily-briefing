@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head><title>Daily Briefing</title></head>
+<body>
+    <h1>Daily Briefing</h1>
+    {% if latest_run %}
+        <h3>Latest Run ({{ latest_run.timestamp }})</h3>
+        <p>{{ latest_run.new_items_count }} new items.</p>
+        {% for item in items %}
+            <div><a href="{{ item.link }}">{{ item.title }}</a> - {{ item.description }}</div>
+        {% endfor %}
+    {% else %}
+        <p>No runs yet.</p>
+    {% endif %}
+
+    <hr>
+    <form action="/ingest" method="POST">
+        <button type="submit">Run Now</button>
+    </form>
+    <hr>
+
+    <h2>History</h2>
+    <table>
+        <tr><th>Time</th><th>Status</th><th>New Items</th></tr>
+        {% for run in runs %}
+        <tr>
+            <td>{{ run.timestamp }}</td>
+            <td>{{ '✓' if run.status == 'success' else '✗' }}</td>
+            <td>{{ run.new_items_count }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

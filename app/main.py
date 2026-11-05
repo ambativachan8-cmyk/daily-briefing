@@ -1,3 +1,5 @@
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
 """
 Main FastAPI application.
 """
@@ -6,6 +8,8 @@ from datetime import datetime, timezone
 from time import time
 
 from fastapi import FastAPI, Request
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.responses import JSONResponse
 
 from app.db import cleanup_stale_runs, get_items_by_run, get_runs, get_run, init_db
@@ -58,10 +62,15 @@ async def health_check():
     )
 
 
-@app.get("/")
-async def root():
+@app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
     """Root endpoint."""
-    return {"message": "Daily Briefing API", "version": "0.1.0"}
+    runs = get_runs(limit=10)
+    latest_run = runs[0] if runs else None
+    items = get_items_by_run(latest_run.id) if latest_run else []
+    return templates.TemplateResponse("index.html", {"request": request, "latest_run": latest_run, "items": items, "runs": runs})
+
+templates = Jinja2Templates(directory="templates")
 
 
 @app.get("/feed")
@@ -92,19 +101,11 @@ async def ingest_endpoint(request: Request):
     client_ip = request.client.host if request.client else "unknown"
     allowed, retry_after = check_rate_limit(client_ip)
     if not allowed:
-        return JSONResponse(
-            status_code=429,
-            content={
-                "error": "Rate limited. Try again later.",
-                "retry_after_seconds": round(retry_after, 1),
-            },
-        )
+        # For a simple form app, maybe we just redirect back with a query param for error
+        return RedirectResponse(url="/?error=rate_limited", status_code=303)
 
-    result = await ingest_feed()
-    if result["status"] == "failed" and "Another ingestion is already running" in str(result.get("error", "")):
-        return JSONResponse(status_code=409, content=result)
-
-    return JSONResponse(content=result)
+    await ingest_feed()
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.get("/runs")

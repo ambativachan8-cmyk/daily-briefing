@@ -31,6 +31,6 @@ async def test_root_endpoint(async_client):
     """Test the root endpoint."""
     response = await async_client.get("/")
     assert response.status_code == 200
-    data = response.json()
-    assert data["message"] == "Daily Briefing API"
-    assert data["version"] == "0.1.0"
+    assert "text/html" in response.headers["content-type"]
+    assert "Daily Briefing" in response.text
+    assert "History" in response.text
