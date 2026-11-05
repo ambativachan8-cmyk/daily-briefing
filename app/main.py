@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from app.db import cleanup_stale_runs, get_items_by_run, get_runs, get_run, init_db
 from app.feed import _check_feed_fail_config, fetch_feed, get_feed_items, ingest_feed
+from app.scheduler import start_scheduler, stop_scheduler
 
 # Simple in-memory rate limiter for /ingest endpoint
 _ingest_last_call: dict[str, float] = {}
@@ -21,7 +22,9 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     init_db()
     cleanup_stale_runs()
+    start_scheduler()
     yield
+    stop_scheduler()
 
 
 app = FastAPI(
