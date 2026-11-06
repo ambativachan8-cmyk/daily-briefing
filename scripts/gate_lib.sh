@@ -77,11 +77,16 @@ pr_facts() {
 }
 
 # Prints the reason this PR may not be treated as a candidate, or nothing.
-# Log the agent account in with a new App token. Each agent run is limited to 40 minutes and a token lasts 60, so
-# calling this before every run is enough. On failure the agent simply cannot reach GitHub.
+# Log the agent account in with a new App token, or leave it logged out and return 1, and the caller must not
+# start the agent. The previous token is revoked and removed first, so a failure here cannot leave an older one
+# in use. Each agent run is limited to 40 minutes and a token lasts 60, so calling this before every run is enough.
 refresh_agent_login() {
-  [ -r "$AGENT_APP_KEY" ] || { echo "no App key; the agents have no GitHub login" >&2; return 1; }
   local now head claims sig jwt token
+  as_agent sh -c 'gh api -X DELETE /installation/token >/dev/null 2>&1; gh auth logout --hostname github.com >/dev/null 2>&1'
+  if as_agent gh auth token >/dev/null 2>&1; then
+    echo "could not remove the previous agent login" >&2; return 1
+  fi
+  [ -r "$AGENT_APP_KEY" ] || { echo "no App key; the agents have no GitHub login" >&2; return 1; }
   b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
   now="$(date +%s)"
   head="$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)"
@@ -90,9 +95,15 @@ refresh_agent_login() {
   jwt="$head.$claims.$sig"
   token="$(curl -sS -m 30 -K <(printf 'header = "Authorization: Bearer %s"\n' "$jwt") \
     -H 'Accept: application/vnd.github+json' -X POST \
-    "https://api.github.com/app/installations/$AGENT_APP_INSTALLATION/access_tokens" | jq -r '.token // empty')"
+    "https://api.github.com/app/installations/$AGENT_APP_INSTALLATION/access_tokens" | jq -r '.token // empty' 2>/dev/null)" || token=""
   [ -n "$token" ] || { echo "could not get an App token; the agents have no GitHub login" >&2; return 1; }
-  printf '%s\n' "$token" | as_agent sh -c 'gh auth login --with-token --hostname github.com && gh auth setup-git'
+  if printf '%s\n' "$token" | as_agent sh -c 'gh auth login --with-token --hostname github.com && gh auth setup-git' >/dev/null 2>&1 \
+     && [ "$(as_agent gh api /installation/repositories --jq .total_count 2>/dev/null)" = 1 ]; then
+    return 0
+  fi
+  as_agent sh -c 'gh api -X DELETE /installation/token >/dev/null 2>&1; gh auth logout --hostname github.com >/dev/null 2>&1'
+  echo "the agent login did not work; the agents have no GitHub login" >&2
+  return 1
 }
 
 candidate_problem() {  # <facts json>

@@ -150,7 +150,7 @@ run_hermes() {
   local agent="$1" n="$2" msg="$3" tools="$4" ts out usage rc usage_json
   ts="$(date -u +%Y%m%dT%H%M%SZ)"; out="$LOG/runs/$ts-$agent-${n:-plan}.txt"
   usage="$AGENT_HOME/run-usage-$ts.json"   # the agent user writes it; used for token accounting only
-  refresh_agent_login || true
+  refresh_agent_login || { echo "$agent on #${n:-plan}: no GitHub login, so the run was not started"; return 1; }
   set +e
   as_agent timeout 2400 hermes -p "$agent" --in "$AGENT_HOME/agents/$agent/daily-briefing" --yolo \
     -t "$tools" -z "$msg" --usage-file "$usage" >"$out" 2>&1
@@ -216,7 +216,7 @@ run_openclaw() {
     awk -v m="$m" -v now="$(date +%s)" '$1==m && $2>now {f=1} END {exit !f}' "$LEDGER" && continue
     while :; do
       ts="$(date -u +%Y%m%dT%H%M%SZ)"; out="$LOG/runs/$ts-$agent-${n:-0}.json"
-      refresh_agent_login || true
+      refresh_agent_login || { echo "$agent on #${n:-0}: no GitHub login, so the run was not started"; return 1; }
       set +e
       as_agent timeout 2400 openclaw agent --agent "$agent" --session-key "$key" --model "$m" \
         --message "$msg" --json --timeout 2300 >"$out" 2>"${out%.json}.err"

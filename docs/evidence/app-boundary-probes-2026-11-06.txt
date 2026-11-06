@@ -69,7 +69,7 @@ probe failures: 0
   App merges PR 30 after the owner's approval: 200 [Pull Request successfully merged]
   PR 30: MERGED, mergedBy=app/daily-briefing-agents
 
---- dispatcher changes, with gh and the login stubbed
+--- dispatcher changes, with gh stubbed
   ok    selects the App's PR
   ok    still selects the owner's PR
   ok    refuses another author
@@ -80,6 +80,86 @@ probe failures: 0
   ok    candidate: the owner is allowed
   ok    candidate: others are refused
   ok    tickets: owner and App only
-  ok    refresh gets a real token and passes it on stdin
-  ok    refresh fails without the key
 control-plane test failures: 0
+
+--- token refresh failure paths, with real gh and real tokens in a temporary home, and the run functions with a stub
+== a working refresh
+  ok    succeeds
+  ok    stores a token
+  ok    the token works at GitHub
+  ok    the login is the App, on one repository
+  ok    git is wired to gh
+== the next refresh retires the previous token
+  ok    succeeds
+  ok    stores a different token
+  ok    the previous token is now refused at GitHub
+  ok    the new token works
+== the key cannot be read
+  ok    fails
+  ok    nothing is left stored
+  ok    the earlier token is refused at GitHub
+== GitHub refuses to issue a token
+  ok    fails
+  ok    nothing is left stored
+  ok    the earlier token is refused at GitHub
+== an expired token is already stored, and the refresh also fails
+  ok    the stored token is dead at GitHub
+  ok    it is still in the store before the refresh
+  ok    fails
+  ok    the dead token is not left stored
+== gh refuses the new token
+  ok    fails
+  ok    nothing is left stored
+== the new login cannot be confirmed as the App
+  ok    fails
+  ok    nothing is left stored
+== the previous login cannot be removed
+  ok    fails, without logging in again
+  ok    the token stuck in the store was still revoked at GitHub
+== the run functions stop on a failed refresh, and only then
+  ok    hermes: failed refresh returns failure
+  ok    hermes: the agent was not started
+  ok    openclaw: failed refresh returns failure
+  ok    openclaw: the agent was not started
+  ok    openclaw: it does not move on to the next model
+  ok    hermes: control, a working refresh does start the agent
+  ok    openclaw: control, a working refresh does start the agent
+fail-closed test failures: 0
+
+--- stale approvals, with dismissal on and then off as the control. Probe PRs #32 and #33 merged only into probe branches, which were then deleted
+
+=== base probe/stale-base: dismiss stale approvals = true
+probe/stale-base reviews=1 dismiss_stale=true
+  WORKS    201  create probe/stale-head
+  WORKS    201  commit on probe/stale-head
+  WORKS    201  open a PR into probe/stale-base
+-- the owner approves head 88440c7, gates green
+  PR 32: state=OPEN review=APPROVED merge=CLEAN mergedBy=-
+-- the App pushes new code
+  WORKS    201  commit new code on probe/stale-head after the approval
+  PR 32: state=OPEN review=REVIEW_REQUIRED merge=UNKNOWN mergedBy=-
+-- the gates turn green on the new head 3093052, so the approval is the only thing still in question
+  PR 32: state=OPEN review=REVIEW_REQUIRED merge=BLOCKED mergedBy=-
+  naming the approved older head: 409 [Head branch was modified. Review and try the merge again.]
+  App merge attempt: 405 [At least 1 approving review is required by reviewers with write access.]
+  PR 32: state=OPEN review=REVIEW_REQUIRED merge=BLOCKED mergedBy=-
+-- control: the owner approves the new head, and the App can merge
+  PR 32: state=OPEN review=APPROVED merge=CLEAN mergedBy=-
+  App merge attempt: 200 [Pull Request successfully merged]
+  PR 32: state=MERGED review=APPROVED merge=UNKNOWN mergedBy=app/daily-briefing-agents
+
+=== base probe/nodismiss-base: dismiss stale approvals = false
+probe/nodismiss-base reviews=1 dismiss_stale=false
+  WORKS    201  create probe/nodismiss-head
+  WORKS    201  commit on probe/nodismiss-head
+  WORKS    201  open a PR into probe/nodismiss-base
+-- the owner approves head 3fced13, gates green
+  PR 33: state=OPEN review=APPROVED merge=CLEAN mergedBy=-
+-- the App pushes new code
+  WORKS    201  commit new code on probe/nodismiss-head after the approval
+  PR 33: state=OPEN review=APPROVED merge=UNKNOWN mergedBy=-
+-- the gates turn green on the new head 2bb9593, so the approval is the only thing still in question
+  PR 33: state=OPEN review=APPROVED merge=CLEAN mergedBy=-
+  naming the approved older head: 409 [Head branch was modified. Review and try the merge again.]
+  App merge attempt: 200 [Pull Request successfully merged]
+  PR 33: state=MERGED review=APPROVED merge=UNKNOWN mergedBy=app/daily-briefing-agents
