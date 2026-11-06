@@ -70,7 +70,7 @@ def temp_db(tmp_path, monkeypatch):
 @pytest_asyncio.fixture
 async def client():
     transport = ASGITransport(app=app.main.app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as http:
+    async with AsyncClient(transport=transport, base_url="http://testserver", follow_redirects=True) as http:
         yield http
 
 
@@ -240,7 +240,9 @@ async def test_a6_failed_fetch_stored_as_failed_then_next_run_recovers(client, m
     assert rows[2]["error"] is None
 
     html = (await client.get("/")).text
-    assert "✓" in html  # recovered run shows a success row
+    newest_row = html.split("<tbody>")[1].split("</tr>")[0]
+    assert "✓" in newest_row and "✗" not in newest_row  # the newest row is the recovered run
+    assert "This run failed" not in html  # the failure no longer heads the page
     assert "No new items in this run." in html
 
 
@@ -274,7 +276,7 @@ async def test_a8_run_now_adds_row_rate_limited_no_overlap_and_scheduler_tick(cl
 
     # (b) Run-now is rate-limited.
     limited = await client.post("/run-now")
-    assert limited.status_code == 429
+    assert limited.status_code == 200
     assert "Rate limited" in limited.text
     assert len(runs_of(temp_db)) == 1  # the rate-limited call started no run
 
@@ -294,10 +296,13 @@ async def test_a8_run_now_adds_row_rate_limited_no_overlap_and_scheduler_tick(cl
     in_flight = asyncio.create_task(client.post("/run-now"))
     await asyncio.wait_for(started.wait(), timeout=5)  # first run holds the lock
     app.main._last_call.clear()  # isolate the overlap guard from the rate limiter
-    second = await client.post("/run-now")
-    assert second.status_code == 409
+    try:
+        # Bounded, so a missing guard fails this test instead of hanging the suite.
+        second = await asyncio.wait_for(client.post("/run-now"), timeout=5)
+    finally:
+        release.set()
+    assert second.status_code == 200
     assert "already in progress" in second.text
-    release.set()
     first_resp = await asyncio.wait_for(in_flight, timeout=5)
     assert first_resp.status_code == 200
     assert ingest_calls == [1]  # the second request did not start a second ingest

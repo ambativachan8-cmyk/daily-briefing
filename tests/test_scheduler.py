@@ -11,12 +11,7 @@ from app.db import init_db, get_conn, acquire_lock
 
 @pytest.fixture(autouse=True)
 def setup_db():
-    init_db()
-    # Clear runs and locks for a clean state
-    with get_conn() as conn:
-        conn.execute("DELETE FROM runs")
-        conn.execute("DELETE FROM locks")
-        conn.commit()
+    init_db()  # tests/conftest.py gives each test its own empty database
 
 def test_scheduler_starts_and_stops():
     """
@@ -41,7 +36,7 @@ async def test_scheduler_tick_executes_ingest():
         
         # Set a very short interval and disable loop to just run once for testing
         # Or mock asyncio.sleep to raise CancelledError after first run
-        with patch("os.environ.get", side_effect=lambda k, d=None: "0.1" if k == "SCHEDULER_INTERVAL_SECONDS" else d):
+        with patch("os.environ.get", side_effect=lambda k, d=None: "7" if k == "SCHEDULER_INTERVAL_SECONDS" else d):
             with patch("asyncio.sleep", side_effect=[None, asyncio.CancelledError]):
                 try:
                     await scheduler_loop()
@@ -63,7 +58,7 @@ async def test_scheduler_lock_overlap():
         assert acquired is True
         
         # Now run one tick of the scheduler
-        with patch("os.environ.get", side_effect=lambda k, d=None: "0.1" if k == "SCHEDULER_INTERVAL_SECONDS" else d):
+        with patch("os.environ.get", side_effect=lambda k, d=None: "7" if k == "SCHEDULER_INTERVAL_SECONDS" else d):
             with patch("asyncio.sleep", side_effect=[asyncio.CancelledError]):
                 try:
                     await scheduler_loop()
@@ -83,8 +78,8 @@ async def test_scheduler_error_resiliency():
     from app.scheduler import scheduler_loop
     
     # Mock ingest_feed to raise an exception
-    with patch("app.scheduler.ingest_feed", side_effect=[Exception("Boom"), {"status": "success", "new_items_count": 0}]):
-        with patch("os.environ.get", side_effect=lambda k, d=None: "0.1" if k == "SCHEDULER_INTERVAL_SECONDS" else d):
+    with patch("app.scheduler.ingest_feed", side_effect=[Exception("Boom"), {"status": "success", "new_items_count": 0}]) as mock_ingest:
+        with patch("os.environ.get", side_effect=lambda k, d=None: "7" if k == "SCHEDULER_INTERVAL_SECONDS" else d):
             # Sleep once, then cancel on second sleep
             with patch("asyncio.sleep", side_effect=[None, asyncio.CancelledError]):
                 try:
@@ -92,4 +87,5 @@ async def test_scheduler_error_resiliency():
                 except asyncio.CancelledError:
                     pass
                 
-                # If we reached here without the loop crashing, it's resilient.
+                # The error did not stop the loop: a second tick ran after it.
+                assert mock_ingest.call_count == 2

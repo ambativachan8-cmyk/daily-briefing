@@ -333,9 +333,17 @@ async def test_ingest_after_failure_succeeds(temp_db, reset_env):
 
 @pytest.mark.asyncio
 async def test_ingest_lock_prevents_overlapping(temp_db, reset_env):
-    """Test that lock prevents overlapping ingestion runs."""
-    # This test is tricky to do in-process, but we can at least verify
-    # the lock mechanism works by checking the error message structure
+    """While the lock is held, a second run stores nothing; once released, a run works."""
+    from app.db import acquire_lock, get_runs
+
+    with acquire_lock("ingestion") as acquired:
+        assert acquired is True
+        result = await ingest_feed()
+        assert result["status"] == "failed"
+        assert result["run_id"] is None
+        assert "Another ingestion" in result["error"]
+        assert get_runs() == []
+
     result = await ingest_feed()
     assert result["status"] == "success"
     assert result["new_items_count"] == 3
