@@ -30,6 +30,7 @@ overstatements in the first version of this file and of DELIVERY.md, listed at t
 | `terraform init` works on Linux | Real Linux host, the committed lock and then the new one: [log](evidence/terraform-lock-linux.log) | Failed before (exit 1), passes after (exit 0) |
 | Newly staged releases leave out `tests/` | Staged a release in a temp root on its own port: [log](evidence/staged-release-no-tests.log) | Ready, with no `tests/` |
 | The token totals add up | The review summed every table. [The raw log](evidence/runs.jsonl) is now published | All tables total 33,905,951 |
+| The agents' GitHub App cannot get past the gates | Live probes on throwaway branches with `main`'s rules: [results](evidence/app-boundary-probes-2026-11-06.txt) | Refused: publishing a gate, adding a workflow, pushing or merging past protection, changing settings, approving its own PR, and merging code changed after an approval. A control with dismissal off did merge it. Allowed, as builders need: branches, commits, PRs, comments, labels. A failed token refresh leaves the agent logged out and the run not started |
 | Every cited commit and link exists | Each one resolved through the GitHub API | 28 commits and 25 links resolve |
 | No secrets in git | The review scanned 1,322 blobs on all refs. The operator checked `runs.jsonl` and the refreshed configs | None found |
 
@@ -53,8 +54,7 @@ overstatements in the first version of this file and of DELIVERY.md, listed at t
 
 | What | Why | What would prove it |
 |---|---|---|
-| A real ticket through the current workflow | The agents' narrower token does not exist. Only the owner can create it, and the dispatcher stays off until then | Run tickets [#21](https://github.com/ambativachan8-cmyk/daily-briefing/issues/21) to [#24](https://github.com/ambativachan8-cmyk/daily-briefing/issues/24) |
-| Whether the agents' token can merge, or bypass the gates | Same. Contents write is what a merge needs, so assume it can merge a green PR. Whether it can bypass depends on the owner's admin exemption | `enforce_admins=true` removes the bypass whatever the answer |
+| A real ticket through the current workflow | No agent has run under the GitHub App, and the dispatcher stays off until the owner approves a restart | Run tickets [#21](https://github.com/ambativachan8-cmyk/daily-briefing/issues/21) to [#24](https://github.com/ambativachan8-cmyk/daily-briefing/issues/24) |
 | The current setup on a fresh VM | Earlier scripts ran end to end on 2026-11-05. The security rework has not. Needs an AWS login | `terraform apply` plus `install_all.sh` on a disposable VM |
 | The team running from someone else's fork | The repo name is hard-coded. The steps are in DELIVERY section 7, and they have not been run | A fork |
 
@@ -64,7 +64,7 @@ overstatements in the first version of this file and of DELIVERY.md, listed at t
 |---|---|---|---|
 | 1 | The agent team cannot run today, and the diagram shows a flow no ticket took | Yes, on the host | **Open: owner action.** The diagram is now labelled, and DELIVERY section 2 describes the flow that really shipped |
 | 2 | The operator's role is larger than the roster shows | Yes: 56 of 56 commits, and the `#2` timeline | Disclosed in DELIVERY section 1 |
-| 3 | Gates do not bind the merging account; the agents' token may merge | PR #20 confirmed. Token untested | Disclosed. `security/README.md`'s "cannot merge" is withdrawn. **Owner decision** on `enforce_admins` |
+| 3 | Gates do not bind the merging account; the agents' token may merge | PR #20 confirmed. The App was then tested: it could merge once both gates were green | **Fixed for the App:** `main` requires one approving review, with stale approvals dismissed. `enforce_admins` stays off, so the owner's account is still not bound |
 | 4 | Documented `terraform init` fails on Linux and macOS | Yes, on real Linux | **Fixed and retested** |
 | 5 | The 6-hour schedule has not been seen firing, and DELIVERY's prediction was wrong | Yes: the service restarted at 20:32:42 UTC, so the promised 21:28 tick could not happen | **Fixed:** runs 24 and 25 fired at 02:32:42 and 08:32:42 UTC on 2026-11-06, with no restart and no POST to a run endpoint in either window. Two firings observed. See DELIVERY section 6 |
 | 6 | No way to run the tests from the docs; fork and cloud-init steps missing; no reason given for AWS | Yes | Docs added. Fork steps not executed |

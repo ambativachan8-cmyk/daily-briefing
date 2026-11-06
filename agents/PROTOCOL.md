@@ -61,7 +61,7 @@ the helper, which swaps both labels in one step:
    line. The control plane posts it, sets `agent/test`, and moves the issue to `status:ready-to-merge` or
    `status:test-failed`, `role:manager`.
 7. **Human** (Vachan) merges only when both statuses are `success` on the PR head commit (branch protection on `main` enforces this
-   for non-admins; the owner's account can bypass it, and PRs #20, #25 and the documentation PRs after them did) and the control plane has posted its merge decision with the receipt.
+   for non-admins; the owner's account can bypass it, and PRs #20, #25 and the operator PRs after them did) and the control plane has posted its merge decision with the receipt.
 8. **Manager** triages tickets sent back to it (`status:changes-requested` or
    `status:test-failed` with `role:manager`) and new `type:bug` issues: re-queues them to the
    right builder (`status:changes-requested`, `role:<builder>`) with a comment explaining why
