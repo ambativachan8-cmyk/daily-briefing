@@ -1,11 +1,12 @@
 # Delivery report — Daily Briefing (Confer take-home #3)
 
-> **Status at 2026-11-06: the product is live, and the agent team that built it is paused.** The required product items work:
+> **Status at 2026-11-06: the product is live, and the agent team that built it is paused again after one supervised run.** The required product items work:
 > scheduled and manual runs, stored history, stable-ID dedup, a dated public briefing, failure and recovery, A1–A8. One known gap:
 > a database error during a run gives a 500 and stores no failed row ([#24](https://github.com/ambativachan8-cmyk/daily-briefing/issues/24)).
 > The team needed more human correction than we wanted, and section 4 says where. After delivery, an audit by Codex, which the
-> operator ran separately from the delivery team, found the agent workflow had no real security boundary. That is reproduced and fixed in code, but **no real ticket has gone through the fixed workflow yet**:
-> the dispatcher stays stopped until the owner approves a restart.
+> operator ran separately from the delivery team, found the agent workflow had no real security boundary. That is reproduced and fixed in code, but **no ticket has completed the fixed workflow**.
+> In one supervised run on 2026-11-06 the manager and the builder worked on #24 and opened [PR #36](https://github.com/ambativachan8-cmyk/daily-briefing/pull/36), which is unfinished and unmerged.
+> The dispatcher is stopped again until the owner approves a restart.
 >
 > [docs/RELEASE_EVIDENCE.md](docs/RELEASE_EVIDENCE.md) separates what was verified, reported by agents, simulated and untested.
 
@@ -14,7 +15,7 @@
 1. **The product:** open the live URL and press Run Now. A new row appears: 0 new if nothing has changed since the last run, or 1 if the feed has gained an item, which it does every 6 hours. A second press within a minute is refused.
 2. **The story:** read [issue #2](https://github.com/ambativachan8-cmyk/daily-briefing/issues/2) and [PR #18](https://github.com/ambativachan8-cmyk/daily-briefing/pull/18): rejections, rework, and what the gates missed.
 3. **Who wrote it:** `git log --format='%an' -- app tests templates | sort | uniq -c`
-4. **What is still open:** [issues #21 to #24](https://github.com/ambativachan8-cmyk/daily-briefing/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Abug), found by the release review and queued for the agents.
+4. **What is still open:** [issues #21 to #24](https://github.com/ambativachan8-cmyk/daily-briefing/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Abug), found by the release review and queued for the agents, plus #34, split from #24 by the manager, and [PR #36](https://github.com/ambativachan8-cmyk/daily-briefing/pull/36), unfinished.
 
 | | |
 |---|---|
@@ -318,7 +319,7 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
 - **One GitHub account.** All agents share one repo-scoped token, so GitHub shows every comment and PR
   under the owner's account. Authorship is carried by per-agent git authors and the signature tag on
   each comment. GitHub refuses formal "approve" reviews (self-approval), so the gate is two required
-  commit statuses.
+  commit statuses. PR #36, on 2026-11-06, is the first under the agents' own GitHub App.
 - **Gate strength.** `enforce_admins` is off, so the gates do not bind the owner's account. 49 operator commits, mostly scripts,
   prompts and reports, went straight to `main`. PRs #20, #25 and the operator PRs after them merged with neither gate, including the security fix itself. No operator commit touches
   `app/` or `tests/`. The gate is OS accounts, App permissions and branch protection, not cryptographic separation. The agents' App does
@@ -328,7 +329,9 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
   not removed. A candidate written to target the canary could evade it, though it must still pass the runner's own HTTP checks
   and the owner's reading of the diff. The receipt covers the PR head, not the merged result. Details are in
   [security/README.md](security/README.md).
-- **Automation is paused.** It needs the owner's decision. The agents' GitHub App exists, and no agent has run under it yet.
+- **Automation is paused.** It needs the owner's decision. One supervised run on 2026-11-06 ran the Hermes manager and the OpenClaw backend builder on #24 under the GitHub App, stepped by hand
+  with the timer masked. It stopped before review and test, and nothing from it is merged or live. PR #36 stops the 500 and its tests pass when merged onto `main`, but it sits on a branch 58 commits behind,
+  `acquire_lock` still yields twice, and the original reproduction stores no row, so #24 stays open. [Details](docs/evidence/supervised-24-run-2026-11-06.md).
 - **Human findings guided the rework.** Review findings on #2, #3 and #11 came from the operator as well
   as the reviewer. They state outcomes and reproductions, and the code is the builders'. The human side
   caught more serious defects than the reviewer did on the lite-model days, so the gates alone were
@@ -354,7 +357,7 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
 - **The fresh-VM test ran before NVIDIA was added.** `configure_models.sh` handles the key, and it ran on
   the real VM, but not on a fresh one.
 - **Schedule evidence.** Runs 24 and 25 fired at 02:32:42 and 08:32:42 UTC on 2026-11-06, each exactly six hours after the one before, starting from the 20:32:42 start tick, and each found 1 new item.
-  The service did not restart in that time (0 restarts), and its log shows no POST to a run endpoint in either window. An earlier version of this report promised a tick
+  The service did not restart in that time (0 restarts), and its log shows no POST to a run endpoint in the minutes around either firing. A Run Now between them (run 23 at 21:49:25) did not move the schedule. An earlier version of this report promised a tick
   at 21:28 UTC, which was wrong, because a restart resets the timer. The scheduler runs in the web process, and the page does not mark which rows were scheduled.
 - **Test debts.** `tests/test_main.py` and `tests/test_scheduler.py` empty the `data/briefing.db` of whichever
   checkout runs them. A deployed release links `data/` to production, so running the suite there would have erased the public
@@ -414,7 +417,7 @@ for l in role:manager role:backend role:ui role:reviewer role:tester status:read
 ```
 
 ```bash
-gh api -X PUT repos/YOU/REPO/branches/main/protection --input - <<< '{"required_status_checks":{"strict":false,"contexts":["agent/review","agent/test"]},"enforce_admins":false,"required_pull_request_reviews":null,"restrictions":null}'
+gh api -X PUT repos/YOU/REPO/branches/main/protection --input - <<< '{"required_status_checks":{"strict":false,"contexts":["agent/review","agent/test"]},"enforce_admins":false,"required_pull_request_reviews":{"required_approving_review_count":1,"dismiss_stale_reviews":true},"restrictions":null}'
 ```
 
 **What has been tested.** `terraform init` passes on real Linux with the lock file for five platforms

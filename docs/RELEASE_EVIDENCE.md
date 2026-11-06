@@ -54,7 +54,7 @@ overstatements in the first version of this file and of DELIVERY.md, listed at t
 
 | What | Why | What would prove it |
 |---|---|---|
-| A real ticket through the current workflow | No agent has run under the GitHub App, and the dispatcher stays off until the owner approves a restart | Run tickets [#21](https://github.com/ambativachan8-cmyk/daily-briefing/issues/21) to [#24](https://github.com/ambativachan8-cmyk/daily-briefing/issues/24) |
+| A real ticket through the current workflow | [One supervised run](evidence/supervised-24-run-2026-11-06.md) reached a builder PR under the GitHub App and stopped before review and test. The dispatcher stays off until the owner approves a restart | Run tickets [#21](https://github.com/ambativachan8-cmyk/daily-briefing/issues/21) to [#24](https://github.com/ambativachan8-cmyk/daily-briefing/issues/24) |
 | The current setup on a fresh VM | Earlier scripts ran end to end on 2026-11-05. The security rework has not. Needs an AWS login | `terraform apply` plus `install_all.sh` on a disposable VM |
 | The team running from someone else's fork | The repo name is hard-coded. The steps are in DELIVERY section 7, and they have not been run | A fork |
 
