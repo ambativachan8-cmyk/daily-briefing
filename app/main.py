@@ -1,15 +1,24 @@
 """
 Main FastAPI application.
 """
+import logging
+import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from time import time
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.db import cleanup_stale_runs, get_items_by_run, get_runs, get_run, init_db
+from app.db import (
+    cleanup_stale_runs,
+    get_items_by_run,
+    get_latest_run_with_new_items,
+    get_run,
+    get_runs,
+    init_db,
+)
 from app.feed import _check_feed_fail_config, fetch_feed, get_feed_items, ingest_feed
 from app.scheduler import start_scheduler, stop_scheduler
 
@@ -19,6 +28,15 @@ RATE_LIMIT_SECONDS = 60  # Minimum 60 seconds between runs
 
 # Lock to prevent overlapping runs
 _run_now_lock: bool = False
+
+logger = logging.getLogger(__name__)
+
+# The only messages /?notice= can show, so the URL cannot put text on the page.
+NOTICES = {
+    "rate-limited": "Rate limited. Run Now works once a minute. Try again shortly.",
+    "busy": "Another run is already in progress. Please wait.",
+    "unsaved": "That run failed and could not be saved. The error has been logged.",
+}
 
 
 @asynccontextmanager
@@ -38,7 +56,55 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+
+def format_when(value: str) -> str:
+    """Turn a stored ISO time into 'Nov 6, 2026, 08:32 UTC'."""
+    try:
+        when = datetime.fromisoformat(value).astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return value
+    return f"{when:%b} {when.day}, {when.year}, {when:%H:%M} UTC"
+
+
 templates = Jinja2Templates(directory="templates")
+templates.env.filters["when"] = format_when
+
+
+@app.exception_handler(sqlite3.Error)
+async def database_unavailable(request: Request, exc: sqlite3.Error):
+    """A database that cannot be read gets a plain message, not a raw 500."""
+    logger.error("Database error on %s: %s", request.url.path, exc)
+    return PlainTextResponse("The briefing is unavailable right now. Please try again shortly.", status_code=503)
+
+
+def _back_to_page(notice: str | None = None) -> RedirectResponse:
+    return RedirectResponse(f"/?notice={notice}" if notice else "/", status_code=303)
+
+
+def _page_context(notice: str | None = None) -> dict:
+    """Everything the public page shows."""
+    runs = [dict(run) for run in get_runs(limit=100)]
+    latest_run = runs[0] if runs else None
+    latest_items = [dict(item) for item in get_items_by_run(latest_run["id"])] if latest_run else []
+
+    # A quiet or failed run has nothing to list, so the last briefing that did stays visible.
+    earlier_run = None
+    earlier_items = []
+    if latest_run and not latest_run["new_items_count"]:
+        found = get_latest_run_with_new_items()
+        if found:
+            earlier_run = dict(found)
+            earlier_items = [dict(item) for item in get_items_by_run(earlier_run["id"])]
+
+    return {
+        "runs": runs,
+        "latest_run": latest_run,
+        "latest_items": latest_items,
+        "earlier_run": earlier_run,
+        "earlier_items": earlier_items,
+        "notice": NOTICES.get(notice),
+    }
 
 
 def check_rate_limit(client_ip: str) -> tuple[bool, float | None]:
@@ -65,24 +131,9 @@ async def health_check():
 
 
 @app.get("/", response_class=HTMLResponse)
-async def root(request: Request):
+async def root(request: Request, notice: str | None = None):
     """Root endpoint - serves the public briefing page."""
-    runs = get_runs(limit=100)
-    latest_run = dict(runs[0]) if runs else None
-    latest_items = []
-    if latest_run:
-        items = get_items_by_run(latest_run["id"])
-        latest_items = [dict(item) for item in items]
-    
-    return templates.TemplateResponse(
-        request,
-        "index.html",
-        {
-            "runs": [dict(run) for run in runs],
-            "latest_run": latest_run,
-            "latest_items": latest_items,
-        },
-    )
+    return templates.TemplateResponse(request, "index.html", _page_context(notice))
 
 
 @app.get("/feed")
@@ -141,78 +192,36 @@ async def ingest_endpoint(request: Request):
 async def run_now_endpoint(request: Request):
     """
     Manual run trigger from the web UI.
-    Rate limited and prevents overlapping runs.
-    Returns HTML (redirect to /) for plain form submissions.
+    Rate limited and prevents overlapping runs. Always answers with a redirect to the page,
+    so the browser ends on / and reloading it cannot start another run.
     """
     client_ip = request.client.host if request.client else "unknown"
-    
-    # Check rate limit
-    allowed, retry_after = check_rate_limit(client_ip)
+
+    allowed, _ = check_rate_limit(client_ip)
     if not allowed:
-        # Return HTML page with rate limit message
-        runs = get_runs(limit=100)
-        latest_run = dict(runs[0]) if runs else None
-        latest_items = []
-        if latest_run:
-            items = get_items_by_run(latest_run["id"])
-            latest_items = [dict(item) for item in items]
-        
-        return templates.TemplateResponse(
-            request,
-            "index.html",
-            {
-                "runs": [dict(run) for run in runs],
-                "latest_run": latest_run,
-                "latest_items": latest_items,
-                "rate_limit_msg": f"Rate limited. Try again in {round(retry_after, 1)}s.",
-            },
-            status_code=429,
-        )
-    
-    # Check for overlapping runs
+        return _back_to_page("rate-limited")
+
     global _run_now_lock
     if _run_now_lock:
-        runs = get_runs(limit=100)
-        latest_run = dict(runs[0]) if runs else None
-        latest_items = []
-        if latest_run:
-            items = get_items_by_run(latest_run["id"])
-            latest_items = [dict(item) for item in items]
-        
-        return templates.TemplateResponse(
-            request,
-            "index.html",
-            {
-                "runs": [dict(run) for run in runs],
-                "latest_run": latest_run,
-                "latest_items": latest_items,
-                "rate_limit_msg": "Another run is already in progress. Please wait.",
-            },
-            status_code=409,
-        )
-    
+        return _back_to_page("busy")
+
     _run_now_lock = True
     try:
-        await ingest_feed()
-        # Return updated page directly (no redirect) so plain form POST works
-        runs = get_runs(limit=100)
-        latest_run = dict(runs[0]) if runs else None
-        latest_items = []
-        if latest_run:
-            items = get_items_by_run(latest_run["id"])
-            latest_items = [dict(item) for item in items]
-        
-        return templates.TemplateResponse(
-            request,
-            "index.html",
-            {
-                "runs": [dict(run) for run in runs],
-                "latest_run": latest_run,
-                "latest_items": latest_items,
-            },
-        )
+        result = await ingest_feed()
     finally:
         _run_now_lock = False
+
+    if result.get("skipped"):
+        return _back_to_page("busy")
+    if result["status"] == "failed" and result["run_id"] is None:
+        return _back_to_page("unsaved")
+    return _back_to_page()
+
+
+@app.get("/run-now")
+async def run_now_address_bar():
+    """Opening the URL directly starts nothing; it just goes to the page."""
+    return _back_to_page()
 
 
 @app.get("/runs")

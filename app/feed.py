@@ -3,6 +3,7 @@ Synthetic feed generation and ingestion logic.
 """
 import hashlib
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
@@ -15,9 +16,12 @@ from app.db import (
     get_config,
     insert_items,
     insert_run_items,
+    record_failed_run,
     set_config,
     update_run_status,
 )
+
+logger = logging.getLogger(__name__)
 
 # Fixed constant start date for the dynamic feed
 FEED_START_DATE = datetime(2026, 11, 4, 0, 0, tzinfo=timezone.utc)
@@ -137,27 +141,30 @@ async def fetch_feed(consume_config: bool = False, conn=None, current_time: date
 async def ingest_feed(current_time: datetime | None = None) -> dict[str, Any]:
     """
     Ingest the feed: fetch, compare with stored items, store new items and run atomically.
+    Never raises: any failure is stored as a failed run, or logged if it cannot be stored.
     """
     timestamp = (current_time or datetime.now(timezone.utc)).isoformat()
+    run_id = None
 
-    with acquire_lock("ingestion") as acquired:
-        if not acquired:
-            return {
-                "run_id": None,
-                "timestamp": timestamp,
-                "status": "failed",
-                "error": "Another ingestion is already running",
-                "new_items_count": 0,
-                "new_items": [],
-                "is_first_run": False,
-            }
+    try:
+        with acquire_lock("ingestion") as acquired:
+            if not acquired:
+                return {
+                    "run_id": None,
+                    "timestamp": timestamp,
+                    "status": "failed",
+                    "error": "Another ingestion is already running",
+                    "new_items_count": 0,
+                    "new_items": [],
+                    "is_first_run": False,
+                    "skipped": True,
+                }
 
-        from app.db import get_conn
-        with get_conn() as conn:
-            run_id = create_run(timestamp, "running", conn=conn)
-            conn.commit()
+            from app.db import get_conn
+            with get_conn() as conn:
+                run_id = create_run(timestamp, "running", conn=conn)
+                conn.commit()
 
-            try:
                 feed_items, error = await fetch_feed(consume_config=True, conn=conn, current_time=current_time)
 
                 if error:
@@ -217,20 +224,15 @@ async def ingest_feed(current_time: datetime | None = None) -> dict[str, Any]:
                     "is_first_run": is_first_run,
                 }
 
-            except Exception as e:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-                update_run_status(run_id, "failed", str(e), new_items_count=0, is_first_run=False, conn=conn)
-                conn.commit()
-                return {
-                    "run_id": run_id,
-                    "timestamp": timestamp,
-                    "status": "failed",
-                    "error": str(e),
-                    "new_items_count": 0,
-                    "new_items": [],
-                    "is_first_run": False,
-                }
-
+    except Exception as e:
+        # The connection above has closed, which discards anything this run had not committed.
+        logger.exception("Run failed")
+        return {
+            "run_id": record_failed_run(run_id, timestamp, str(e)),
+            "timestamp": timestamp,
+            "status": "failed",
+            "error": str(e),
+            "new_items_count": 0,
+            "new_items": [],
+            "is_first_run": False,
+        }

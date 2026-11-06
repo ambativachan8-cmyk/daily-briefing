@@ -247,7 +247,8 @@ feed_run() {  # <label> <item numbers> <wanted links>
   stop_app
   start_app "$(python3 -I -c 'import json, sys; print(json.dumps([{"id": f"item-{i}", "title": f"Item {i}", "link": f"https://example.com/item-{i}"} for i in sys.argv[1].split(",")]))' "$2")" || PAGE=fail
   sleep 1
-  expect "$1" "$(fetch / | grep -oE 'href="https://example\.com/item-[0-9]+"' | wc -l)" "$3"
+  # Links in the earlier briefing, shown below a quiet run, are not new in this run.
+  expect "$1" "$(fetch / | sed '/id="earlier-briefing"/,$d' | grep -oE 'href="https://example\.com/item-[0-9]+"' | wc -l)" "$3"
 }
 
 # ---- the run --------------------------------------------------------------------------------------

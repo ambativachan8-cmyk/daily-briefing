@@ -1,9 +1,12 @@
 """
 Database initialization and connection management.
 """
+import logging
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent.parent / "data" / "briefing.db"
 
@@ -154,6 +157,38 @@ def get_runs(limit: int = 100) -> list[sqlite3.Row]:
         ).fetchall()
 
 
+def get_latest_run_with_new_items() -> sqlite3.Row | None:
+    """The most recent successful run that found something new."""
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM runs WHERE status = 'success' AND new_items_count > 0 ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+
+
+def record_failed_run(run_id: int | None, timestamp: str, error: str) -> int | None:
+    """
+    Store a failure on its own connection: mark the run that had started, or add a row for one that never did.
+    Returns the run's ID. If the database cannot be written, logs that and returns None; it never raises.
+    """
+    try:
+        with get_conn() as conn:
+            if run_id is None:
+                run_id = conn.execute(
+                    "INSERT INTO runs (timestamp, status, error, new_items_count, is_first_run) VALUES (?, 'failed', ?, 0, 0)",
+                    (timestamp, error),
+                ).lastrowid
+            else:
+                conn.execute(
+                    "UPDATE runs SET status = 'failed', error = ?, new_items_count = 0, is_first_run = 0 WHERE id = ?",
+                    (error, run_id),
+                )
+            conn.commit()
+            return run_id
+    except Exception:
+        logger.exception("Could not store a failed run: %s", error)
+        return None
+
+
 def get_run(run_id: int) -> sqlite3.Row | None:
     """Get a single run by ID."""
     with get_conn() as conn:
@@ -218,10 +253,10 @@ def insert_run_items(run_items_list: list[tuple[int, str, str, str, str]], conn:
 
 
 def get_items_by_run(run_id: int) -> list[sqlite3.Row]:
-    """Get all items seen in a specific run."""
+    """Get all items seen in a specific run, in feed order."""
     with get_conn() as conn:
         return conn.execute(
-            "SELECT ri.item_id as id, ri.title, ri.link, ri.description, (ri.run_id = i.first_seen_run_id) as is_new FROM run_items ri JOIN items i ON ri.item_id = i.id WHERE ri.run_id = ?", (run_id,)
+            "SELECT ri.item_id as id, ri.title, ri.link, ri.description, (ri.run_id = i.first_seen_run_id) as is_new FROM run_items ri JOIN items i ON ri.item_id = i.id WHERE ri.run_id = ? ORDER BY ri.rowid", (run_id,)
         ).fetchall()
 
 
@@ -261,15 +296,12 @@ def set_config(key: str, value: str) -> None:
 def acquire_lock(name: str):
     """
     Context manager to acquire a named lock.
-    Returns True if acquired, False otherwise.
+    Yields True if acquired, False if another run holds it or the database is busy.
+    Other database errors, and errors raised inside the block, reach the caller.
     Only the holder releases the lock.
     """
     from datetime import datetime, timezone
-    try:
-        conn = sqlite3.connect(get_db_path(), timeout=0.1)
-    except Exception:
-        yield False
-        return
+    conn = sqlite3.connect(get_db_path(), timeout=0.1)
 
     acquired = False
     try:
@@ -279,16 +311,24 @@ def acquire_lock(name: str):
         )
         conn.commit()
         acquired = True
-        yield True
-    except (sqlite3.IntegrityError, sqlite3.OperationalError):
-        yield False
+    except sqlite3.IntegrityError:
+        pass
+    except sqlite3.OperationalError as error:
+        if "locked" not in str(error) and "busy" not in str(error):
+            conn.close()
+            raise
+
+    try:
+        yield acquired
     finally:
         if acquired:
             try:
+                # Taking the lock may give up quickly; releasing it must not, or every later run is refused.
+                conn.execute("PRAGMA busy_timeout = 5000")
                 conn.execute("DELETE FROM locks WHERE name = ?", (name,))
                 conn.commit()
-            except Exception:
-                pass
+            except sqlite3.Error:
+                logger.exception("Could not release the %s lock", name)
         conn.close()
 
 
