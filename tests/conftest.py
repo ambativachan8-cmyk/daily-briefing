@@ -1,18 +1,9 @@
 """
-No test can reach the app's real database.
-
-The default path is replaced as soon as pytest loads this file, before any test module runs, and
-every test then gets its own empty file. The suite once emptied data/briefing.db (issue #23).
+Every test gets its own empty database. See tests/__init__.py for why none can reach the real one.
 """
-import tempfile
-from pathlib import Path
-
 import pytest
 
 import app.db
-
-_session_dir = tempfile.TemporaryDirectory(prefix="briefing-tests-")
-app.db.DB_PATH = Path(_session_dir.name) / "session.db"
 
 
 @pytest.fixture(autouse=True)

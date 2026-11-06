@@ -249,6 +249,7 @@ feed_run() {  # <label> <item numbers> <wanted links>
   sleep 1
   # Links in the earlier briefing, shown below a quiet run, are not new in this run.
   expect "$1" "$(fetch / | sed '/id="earlier-briefing"/,$d' | grep -oE 'href="https://example\.com/item-[0-9]+"' | wc -l)" "$3"
+  expect "$1, and the run stored that count" "$(fetch /runs | jq -r '.runs[0].new_items_count' 2>/dev/null)" "$3"
 }
 
 # ---- the run --------------------------------------------------------------------------------------

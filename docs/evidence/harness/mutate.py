@@ -39,7 +39,8 @@ M=[
 ("overlap flag never checked on run-now","app/main.py","""    if _run_now_lock:
         return _back_to_page("busy")""","""    if False:
         return _back_to_page("busy")"""),
-("latest run is oldest","app/db.py",'"SELECT * FROM runs ORDER BY timestamp DESC LIMIT ?"','"SELECT * FROM runs ORDER BY timestamp ASC LIMIT ?"'),
+("latest run is oldest","app/db.py",'"SELECT * FROM runs ORDER BY timestamp DESC, id DESC LIMIT ?"','"SELECT * FROM runs ORDER BY timestamp ASC, id ASC LIMIT ?"'),
+("same-time runs oldest first","app/db.py",'ORDER BY timestamp DESC, id DESC LIMIT ?"','ORDER BY timestamp DESC, id ASC LIMIT ?"'),
 ("db lock ignored","app/feed.py","            if not acquired:\n","            if False:\n"),
 ("stale cleanup no-op","app/db.py","""        conn.execute(
             "UPDATE runs SET status = 'failed', error = 'Orphaned run (likely crash)' WHERE status = 'running'"
@@ -62,7 +63,24 @@ M=[
 ("#21 earlier briefing never shown","templates/index.html","{% if earlier_run %}","{% if false %}"),
 ("#21 earlier briefing not labelled","templates/index.html","<h2>Earlier Briefing</h2>",""),
 ("#21 earlier briefing lists every item seen","templates/index.html","{% for item in earlier_items %}\n            {% if item.is_new %}","{% for item in earlier_items %}\n            {% if true %}"),
-("#21 earlier briefing is the oldest","app/db.py","new_items_count > 0 ORDER BY timestamp DESC LIMIT 1","new_items_count > 0 ORDER BY timestamp ASC LIMIT 1"),
+("#21 earlier briefing is the oldest","app/db.py","new_items_count > 0 ORDER BY timestamp DESC, id DESC LIMIT 1","new_items_count > 0 ORDER BY timestamp ASC, id ASC LIMIT 1"),
+("#21 earlier briefing unescaped title","templates/index.html",'''<div class="earlier-item">
+                <a href="{{ item.link }}" target="_blank">{{ item.title }}</a>''','''<div class="earlier-item">
+                <a href="{{ item.link }}" target="_blank">{{ item.title|safe }}</a>'''),
+("#21 earlier briefing unescaped description","templates/index.html",'''<a href="{{ item.link }}" target="_blank">{{ item.title }}</a>
+                <div class="description">{{ item.description }}</div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>''','''<a href="{{ item.link }}" target="_blank">{{ item.title }}</a>
+                <div class="description">{{ item.description|safe }}</div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>'''),
+("#21 unfinished run called quiet","templates/index.html","{% elif latest_run.status == 'running' %}","{% elif false %}"),
 ("#21 earlier briefing hidden after a failed run","app/main.py","""    if latest_run and not latest_run["new_items_count"]:""","""    if latest_run and latest_run["status"] == "success" and not latest_run["new_items_count"]:"""),
 ("#21 quiet line removed","templates/index.html","No new items in this run. Nothing has changed since the last one.",""),
 ("#21 items not in feed order","app/db.py"," WHERE ri.run_id = ? ORDER BY ri.rowid"," WHERE ri.run_id = ?"),
@@ -76,19 +94,28 @@ M=[
 ("#22 script intercepts the form","templates/index.html","</body>","<script>document.forms[0].addEventListener('submit',e=>e.preventDefault())</script></body>"),
 ("#24 failure not stored","app/feed.py",'"run_id": record_failed_run(run_id, timestamp, str(e)),','"run_id": run_id,'),
 ("#24 failure re-raised","app/feed.py",'        logger.exception("Run failed")','        raise'),
-("#24 failed start adds no row","app/db.py","""            if run_id is None:
-                run_id = conn.execute(""","""            if run_id is None:
-                return None
-                run_id = conn.execute("""),
-("#24 failed run left as running","app/db.py","""                conn.execute(
-                    "UPDATE runs SET status = 'failed', error = ?, new_items_count = 0, is_first_run = 0 WHERE id = ?",
-                    (error, run_id),
-                )""","""                pass"""),
+("#24 failed start adds no row","app/db.py","""            if not updated:  # it never started, or its row was never committed
+""","""            if False:
+"""),
+("#24 failed run left as running","app/db.py","UPDATE runs SET status = 'failed', error = ?, new_items_count = 0, is_first_run = 0 WHERE id = ?","UPDATE runs SET status = 'running', error = ?, new_items_count = 0, is_first_run = 0 WHERE id = ?"),
+("#24 a failed run keeps its partial items","app/feed.py","""                    insert_items(new_items, conn=conn)
+""","""                    insert_items(new_items, conn=conn)
+                    conn.commit()
+"""),
+("#24 lock release failure raises","app/db.py","""            except sqlite3.Error:
+                logger.exception("Could not release the %s lock", name)""","""            except ZeroDivisionError:
+                pass"""),
+("#24 left-behind lock never expires","app/db.py","""            "DELETE FROM locks WHERE name = ? AND acquired_at < ?",""","""            "DELETE FROM locks WHERE name = ? AND acquired_at < '0' AND acquired_at < ?","""),
+("#24 a recent lock is taken over","app/db.py","LOCK_MAX_AGE_SECONDS = 600","LOCK_MAX_AGE_SECONDS = -600"),
+("#24 busy database not logged","app/db.py","""        logger.warning("Database busy, could not take the %s lock: %s", name, error)""","""        pass"""),
+("#24 unreachable path gives a raw 500","app/main.py","@app.exception_handler(OSError)\n",""),
 ("#24 storing a failure can raise","app/db.py","""    except Exception:
         logger.exception("Could not store a failed run: %s", error)
         return None""","""    except ZeroDivisionError:
         return None"""),
-("#24 lock never released","app/db.py","""                conn.execute("DELETE FROM locks WHERE name = ?", (name,))""","""                pass"""),
+("#24 lock never released","app/db.py","""                conn.execute("DELETE FROM locks WHERE name = ?", (name,))
+""","""                pass
+"""),
 ("#24 every lock error reads as busy","app/db.py","""        if "locked" not in str(error) and "busy" not in str(error):""","""        if False:"""),
 ("#24 unreadable page gives a raw 500","app/main.py","@app.exception_handler(sqlite3.Error)\n",""),
 ("#24 scheduler overlap not reported","app/feed.py",'                    "skipped": True,\n',''),

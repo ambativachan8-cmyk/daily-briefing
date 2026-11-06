@@ -5,6 +5,7 @@ import logging
 import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from time import time
 
 from fastapi import FastAPI, Request
@@ -67,13 +68,14 @@ def format_when(value: str) -> str:
     return f"{when:%b} {when.day}, {when.year}, {when:%H:%M} UTC"
 
 
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
 templates.env.filters["when"] = format_when
 
 
 @app.exception_handler(sqlite3.Error)
-async def database_unavailable(request: Request, exc: sqlite3.Error):
-    """A database that cannot be read gets a plain message, not a raw 500."""
+@app.exception_handler(OSError)
+async def database_unavailable(request: Request, exc: Exception):
+    """A database that cannot be read or reached gets a plain message, not a raw 500."""
     logger.error("Database error on %s: %s", request.url.path, exc)
     return PlainTextResponse("The briefing is unavailable right now. Please try again shortly.", status_code=503)
 

@@ -4,6 +4,7 @@ Issues #21, #22 and #24: what a visitor sees after each kind of run, and how a d
 import json
 import re
 import sqlite3
+from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
@@ -319,6 +320,100 @@ async def test_run_held_by_the_scheduler_tells_the_visitor_and_stores_nothing(ra
     assert response.headers["location"] == "/?notice=busy"
     assert get_runs() == []
     assert "already in progress" in (await raw.get(response.headers["location"])).text
+
+
+@pytest.mark.asyncio
+async def test_failure_at_the_last_step_keeps_no_items_and_the_next_run_finds_them(raw, browser, monkeypatch):
+    set_feed(monkeypatch, [ITEM])
+    original = app.feed.update_run_status
+
+    def fail_on_success(run_id, status, *args, **kwargs):
+        if status == "success":
+            raise sqlite3.OperationalError("disk I/O error")
+        return original(run_id, status, *args, **kwargs)
+
+    monkeypatch.setattr(app.feed, "update_run_status", fail_on_success)
+    await raw.post("/run-now")
+    rows = get_runs()
+    assert [row["status"] for row in rows] == ["failed"]
+    conn = sqlite3.connect(app.db.get_db_path())
+    assert conn.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 0
+    conn.close()
+
+    monkeypatch.setattr(app.feed, "update_run_status", original)
+    await run(browser)
+    assert get_runs()[0]["new_items_count"] == 1  # the item is not lost to the failed run
+
+
+def test_failure_of_a_run_whose_row_was_never_committed_is_still_stored():
+    run_id = app.db.record_failed_run(999, "2026-11-06T08:00:00+00:00", "lost")
+    rows = get_runs()
+    assert [(row["id"], row["status"], row["error"]) for row in rows] == [(run_id, "failed", "lost")]
+
+
+@pytest.mark.asyncio
+async def test_unfinished_run_is_not_described_as_quiet(raw):
+    execute("INSERT INTO runs (timestamp, status) VALUES ('2026-11-06T08:00:00+00:00', 'running')")
+    page = (await raw.get("/")).text
+    assert "has not finished" in page
+    assert "Nothing has changed" not in page
+
+
+@pytest.mark.asyncio
+async def test_runs_with_the_same_time_list_the_newest_first(raw, monkeypatch):
+    set_feed(monkeypatch, [ITEM])
+    same = datetime(2026, 11, 6, 8, tzinfo=timezone.utc)
+    await app.feed.ingest_feed(current_time=same)
+    set_feed(monkeypatch, [ITEM, NEXT])
+    await app.feed.ingest_feed(current_time=same)
+    await app.feed.ingest_feed(current_time=same)
+    assert [row["id"] for row in get_runs()] == [3, 2, 1]
+    assert app.db.get_latest_run_with_new_items()["id"] == 2
+
+
+@pytest.mark.asyncio
+async def test_lock_that_cannot_be_released_does_not_fail_the_run_and_expires(browser, monkeypatch):
+    set_feed(monkeypatch, [ITEM])
+    execute("CREATE TRIGGER keep_lock BEFORE DELETE ON locks BEGIN SELECT RAISE(ABORT, 'no'); END")
+    await run(browser)
+    assert get_runs()[0]["status"] == "success"
+    execute("DROP TRIGGER keep_lock")
+
+    # Left behind and still recent: another run may hold it.
+    assert (await run(browser)).url.query == b"notice=busy"
+    assert len(get_runs()) == 1
+
+    # Older than any run could be: it no longer blocks.
+    execute("UPDATE locks SET acquired_at = '2020-01-01T00:00:00+00:00'")
+    assert (await run(browser)).url.query == b""
+    assert len(get_runs()) == 2
+
+
+@pytest.mark.asyncio
+async def test_database_path_that_cannot_be_reached_gives_a_plain_message(raw, monkeypatch, tmp_path, caplog):
+    blocker = tmp_path / "a-file"
+    blocker.write_text("not a directory")
+    monkeypatch.setattr(app.db, "DB_PATH", blocker / "briefing.db")
+    response = await raw.post("/run-now")
+    assert response.headers["location"] == "/?notice=unsaved"
+    page = await raw.get("/")
+    assert page.status_code == 503
+    assert "unavailable" in page.text
+
+
+@pytest.mark.asyncio
+async def test_busy_database_is_logged_not_silent(raw, monkeypatch, caplog):
+    set_feed(monkeypatch, [ITEM])
+    other = sqlite3.connect(app.db.get_db_path())
+    other.execute("BEGIN IMMEDIATE")
+    try:
+        response = await raw.post("/run-now")
+    finally:
+        other.rollback()
+        other.close()
+    assert response.headers["location"] == "/?notice=busy"
+    assert "Database busy" in caplog.text
+    assert get_runs() == []
 
 
 def test_error_inside_the_lock_block_reaches_the_caller_and_releases_it():

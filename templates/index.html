@@ -61,6 +61,8 @@
         </div>
         {% if latest_run.status == 'failed' %}
         <p class="no-items" style="color: #dc3545; font-weight: bold;">This run failed: {{ latest_run.error }}</p>
+        {% elif latest_run.status == 'running' %}
+        <p class="no-items">This run has not finished.</p>
         {% elif latest_run.new_items_count > 0 %}
         {% if latest_run.is_first_run %}
         <p class="first-run-note">This is the first run: there was nothing to compare with, so everything is new.</p>

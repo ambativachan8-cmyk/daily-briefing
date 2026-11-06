@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent.parent / "data" / "briefing.db"
 
+# A run takes milliseconds. A lock this old was left behind, and must not refuse every later run.
+LOCK_MAX_AGE_SECONDS = 600
+
 
 def get_db_path() -> Path:
     """Return the database path, ensuring parent directory exists."""
@@ -153,7 +156,7 @@ def get_runs(limit: int = 100) -> list[sqlite3.Row]:
     """Get recent runs ordered by timestamp descending."""
     with get_conn() as conn:
         return conn.execute(
-            "SELECT * FROM runs ORDER BY timestamp DESC LIMIT ?", (limit,)
+            "SELECT * FROM runs ORDER BY timestamp DESC, id DESC LIMIT ?", (limit,)
         ).fetchall()
 
 
@@ -161,7 +164,7 @@ def get_latest_run_with_new_items() -> sqlite3.Row | None:
     """The most recent successful run that found something new."""
     with get_conn() as conn:
         return conn.execute(
-            "SELECT * FROM runs WHERE status = 'success' AND new_items_count > 0 ORDER BY timestamp DESC LIMIT 1"
+            "SELECT * FROM runs WHERE status = 'success' AND new_items_count > 0 ORDER BY timestamp DESC, id DESC LIMIT 1"
         ).fetchone()
 
 
@@ -172,16 +175,15 @@ def record_failed_run(run_id: int | None, timestamp: str, error: str) -> int | N
     """
     try:
         with get_conn() as conn:
-            if run_id is None:
+            updated = conn.execute(
+                "UPDATE runs SET status = 'failed', error = ?, new_items_count = 0, is_first_run = 0 WHERE id = ?",
+                (error, run_id),
+            ).rowcount
+            if not updated:  # it never started, or its row was never committed
                 run_id = conn.execute(
                     "INSERT INTO runs (timestamp, status, error, new_items_count, is_first_run) VALUES (?, 'failed', ?, 0, 0)",
                     (timestamp, error),
                 ).lastrowid
-            else:
-                conn.execute(
-                    "UPDATE runs SET status = 'failed', error = ?, new_items_count = 0, is_first_run = 0 WHERE id = ?",
-                    (error, run_id),
-                )
             conn.commit()
             return run_id
     except Exception:
@@ -300,15 +302,17 @@ def acquire_lock(name: str):
     Other database errors, and errors raised inside the block, reach the caller.
     Only the holder releases the lock.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
     conn = sqlite3.connect(get_db_path(), timeout=0.1)
 
     acquired = False
+    now = datetime.now(timezone.utc)
     try:
         conn.execute(
-            "INSERT INTO locks (name, acquired_at) VALUES (?, ?)",
-            (name, datetime.now(timezone.utc).isoformat()),
+            "DELETE FROM locks WHERE name = ? AND acquired_at < ?",
+            (name, (now - timedelta(seconds=LOCK_MAX_AGE_SECONDS)).isoformat()),
         )
+        conn.execute("INSERT INTO locks (name, acquired_at) VALUES (?, ?)", (name, now.isoformat()))
         conn.commit()
         acquired = True
     except sqlite3.IntegrityError:
@@ -317,6 +321,7 @@ def acquire_lock(name: str):
         if "locked" not in str(error) and "busy" not in str(error):
             conn.close()
             raise
+        logger.warning("Database busy, could not take the %s lock: %s", name, error)
 
     try:
         yield acquired

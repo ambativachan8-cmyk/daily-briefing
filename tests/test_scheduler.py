@@ -37,13 +37,14 @@ async def test_scheduler_tick_executes_ingest():
         # Set a very short interval and disable loop to just run once for testing
         # Or mock asyncio.sleep to raise CancelledError after first run
         with patch("os.environ.get", side_effect=lambda k, d=None: "7" if k == "SCHEDULER_INTERVAL_SECONDS" else d):
-            with patch("asyncio.sleep", side_effect=[None, asyncio.CancelledError]):
+            with patch("asyncio.sleep", side_effect=[None, asyncio.CancelledError]) as mock_sleep:
                 try:
                     await scheduler_loop()
                 except asyncio.CancelledError:
                     pass
                 
                 assert mock_ingest.called
+                mock_sleep.assert_called_with(7)
 
 @pytest.mark.asyncio
 async def test_scheduler_lock_overlap():

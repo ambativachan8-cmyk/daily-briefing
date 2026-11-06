@@ -112,3 +112,12 @@ async def test_feed_text_is_escaped_on_the_page(client, monkeypatch):
     assert "<script>alert(1)" not in html
     assert "<img src=x" not in html
     assert "&lt;script&gt;alert(1)" in html
+
+    # The same item, now shown in the earlier briefing below a quiet run.
+    app.main._last_call.clear()
+    await client.post("/run-now")
+    html = (await client.get("/")).text
+    assert 'id="earlier-briefing"' in html
+    assert "<script>alert(1)" not in html
+    assert "<img src=x" not in html
+    assert "&lt;script&gt;alert(1)" in html
