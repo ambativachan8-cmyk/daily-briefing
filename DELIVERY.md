@@ -1,23 +1,24 @@
 # Delivery report — Daily Briefing (Confer take-home #3)
 
-> **Status: the product is live, and the agent team that built it is paused.** The required product items work: scheduled and
-> manual runs, stored history, stable-ID dedup, a dated public briefing, failure and recovery, A1–A8. The team needed
-> more human correction than we wanted, and section 4 says where. After delivery, an external audit found the agent workflow had no
-> real security boundary. That is reproduced and fixed in code, but **no real ticket has gone through the fixed workflow yet**:
+> **Status at 2026-11-06: the product is live, and the agent team that built it is paused.** The required product items work:
+> scheduled and manual runs, stored history, stable-ID dedup, a dated public briefing, failure and recovery, A1–A8. One known gap:
+> a database error during a run gives a 500 and stores no failed row ([#24](https://github.com/ambativachan8-cmyk/daily-briefing/issues/24)).
+> The team needed more human correction than we wanted, and section 4 says where. After delivery, an audit by Codex, which the
+> operator ran separately from the delivery team, found the agent workflow had no real security boundary. That is reproduced and fixed in code, but **no real ticket has gone through the fixed workflow yet**:
 > the dispatcher stays stopped until the owner creates a narrower agent token and approves a restart.
 >
 > [docs/RELEASE_EVIDENCE.md](docs/RELEASE_EVIDENCE.md) separates what was verified, reported by agents, simulated and untested.
 
 **Five minutes, start here**
 
-1. **The product:** open the live URL and press Run Now. A row showing 0 new appears, and a second press within a minute is refused.
+1. **The product:** open the live URL and press Run Now. A new row appears: 0 new if nothing has changed since the last run, or 1 if the feed has gained an item, which it does every 6 hours. A second press within a minute is refused.
 2. **The story:** read [issue #2](https://github.com/ambativachan8-cmyk/daily-briefing/issues/2) and [PR #18](https://github.com/ambativachan8-cmyk/daily-briefing/pull/18): rejections, rework, and what the gates missed.
 3. **Who wrote it:** `git log --format='%an' -- app tests templates | sort | uniq -c`
 4. **What is still open:** [issues #21 to #24](https://github.com/ambativachan8-cmyk/daily-briefing/issues?q=is%3Aissue+is%3Aopen+label%3Atype%3Abug), found by the release review and queued for the agents.
 
 | | |
 |---|---|
-| Live URL | https://13-55-31-171.sslip.io (fallback `http://13.55.31.171`). Merges redeploy through a staged release once automation is back on. Try: Run Now adds a row showing 0 new; a second click within a minute is refused. Operator fail switch: `python -m app.ops fail-next`. |
+| Live URL | https://13-55-31-171.sslip.io (fallback `http://13.55.31.171`). It serves release `e2a83ce`; `git diff e2a83ce main -- app templates tests requirements.txt` is empty, so the product code is the same as `main`. Merges redeploy through a staged release once automation is back on. Try: Run Now adds a row, usually showing 0 new; a second click within a minute is refused. Operator fail switch: `python -m app.ops fail-next`. |
 | Repository | https://github.com/ambativachan8-cmyk/daily-briefing |
 | Ticket trail | [Issues](https://github.com/ambativachan8-cmyk/daily-briefing/issues?q=is%3Aissue) · [Pull requests](https://github.com/ambativachan8-cmyk/daily-briefing/pulls?q=is%3Apr) |
 | Token report | [docs/TOKEN_REPORT.md](docs/TOKEN_REPORT.md), generated from the run log (per agent, model and phase). See "Where the tokens went" below. |
@@ -52,10 +53,11 @@ clean-checkout checks and the human remain the backstop. The most thorough revie
 on GLM, although Nemotron still approved the page that repeated items.
 
 **Human side (Vachan, with Claude Code as operator; "operator" below means this pairing).** A strong model did a lot here, and it
-is not on the roster because it is not one of the delivery agents. All 56 non-merge human-side commits carry a Claude Code
+is not on the roster because it is not one of the delivery agents. Every non-merge human-side commit (56 of 56 at the release review, and each one since) carries a Claude Code
 co-author, including about 3,000 lines of gate and security scripts. Comments tagged `[human-owner]` were written with it. Vachan
 approved each product merge. Some send-backs were close to specifications: on [#2](https://github.com/ambativachan8-cmyk/daily-briefing/issues/2)
-one named a command to run and a test to write, and that test appears in the code. Some send-backs on #2 also went straight
+at least three listed required regression tests, named a command, a start date and a feed cadence, or gave a full test procedure,
+and `tests/test_regression.py` follows them closely. That sits close to the brief's warning against pasting a line-by-line plan into a weaker model. Some send-backs on #2 also went straight
 to the builder, skipping the manager. So the agents wrote every line of product code, but the human side did much of the catching
 and some of the design. Its tokens are not in the token report. Its work: Terraform VM, runtime installs, agent
 identities, role prompts, ticket protocol, model wiring, the dispatcher, deployment, supervision,
@@ -112,7 +114,7 @@ Full protocol: [agents/PROTOCOL.md](agents/PROTOCOL.md).
 
 ### The security failure Codex found
 
-After delivery, an independent Codex audit of `main` at `e2a83ce` reported that the dispatcher had no trustworthy
+After delivery, a Codex audit, run by the operator separately from the delivery team, of `main` at `e2a83ce` reported that the dispatcher had no trustworthy
 boundary for running candidate code. We paused the dispatcher first (timer masked, service held, public app untouched),
 then reproduced each finding against that exact commit in a disposable environment, before changing anything.
 
@@ -285,9 +287,9 @@ tokens, one Hermes run that hit a stalled NVIDIA model and was stopped with no c
 were again reported as zero.
 
 **In plain words: about 78% of reported tokens went to retries, not first attempts,** and the NVIDIA
-rework on #3 would raise that share. That 26.5M is two different things: 12.5M in attempts that failed, mostly on quota, which
-was waste, and 14.0M in repeat runs such as re-reviews and rework after a send-back, which is the gates doing their job.
-The token report splits these by agent and by model.
+rework on #3 would raise that share. That 26.5M is 12.5M in attempts that failed and 14.0M in repeat successful runs, split by agent and
+by model in the token report. This does not separate waste from useful work: failed attempts did some real work, 6.2M of the
+repeat runs directly follow a failed attempt by the same agent on the same ticket, and the log has no field for why an attempt failed.
 Each model call resends about 25k tokens of context, so a long retry is expensive even when it does
 little. The backend builder used the most reported tokens (14.8M), mainly in the long rework on #2.
 Actual cost is $0, because every key is free tier. The limit that bound us was requests per day, not tokens.
@@ -317,8 +319,8 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
   under the owner's account. Authorship is carried by per-agent git authors and the signature tag on
   each comment. GitHub refuses formal "approve" reviews (self-approval), so the gate is two required
   commit statuses.
-- **Gate strength.** `enforce_admins` is off, so the gates do not bind the owner's account. 49 operator commits to scripts and
-  prompts went straight to `main`, and PR #20, the security fix itself, merged with neither gate. No operator commit touches
+- **Gate strength.** `enforce_admins` is off, so the gates do not bind the owner's account. 49 operator commits, mostly scripts,
+  prompts and reports, went straight to `main`. PRs #20, #25 and #26, all operator work, merged with neither gate, including the security fix itself. #26 changes only documentation and evidence. No operator commit touches
   `app/` or `tests/`. The gate is OS accounts, token permissions and branch protection, not cryptographic separation. The agents'
   token needs Contents write, which is also what a merge needs, so assume it can merge a green PR. Whether it could also bypass the
   gates must be tested when it exists. Turning `enforce_admins` on removes that bypass.
@@ -342,18 +344,18 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
   a run gives a 500 and stores no row. These are [#21](https://github.com/ambativachan8-cmyk/daily-briefing/issues/21),
   [#22](https://github.com/ambativachan8-cmyk/daily-briefing/issues/22) and [#24](https://github.com/ambativachan8-cmyk/daily-briefing/issues/24).
   They were found after the team stopped, and the operator did not fix them because agents write the product code.
-  Each app restart also adds a run, because the scheduler ticks at startup.
+  Each app restart also adds a run, because the scheduler ticks at startup. The page has no dark-mode styling. A `javascript:` link
+  from a feed would be rendered as-is, which cannot happen with today's synthetic feed but would matter on a real one.
 - **The feed is synthetic,** as the brief allows: one made-up item every 6 hours, matched by a 6-hour
   schedule. A run right after another finds nothing new, as in the brief's example.
 - **The fresh-VM test ran before NVIDIA was added.** `configure_models.sh` handles the key, and it ran on
   the real VM, but not on a fresh one.
-- **Schedule evidence.** Live history shows a tick exactly an hour after another (14:21:44 and 15:21:44
-  UTC), under the earlier hourly setting. The scheduler runs in the web process and starts over at each restart. An earlier
-  version of this report promised a tick at 21:28 UTC, which was wrong: the service restarted at 20:32:42 UTC, so the next one is
-  due about 02:32 UTC on 2026-11-06. The page does not mark which rows were scheduled.
+- **Schedule evidence.** Runs 24 and 25 fired at 02:32:42 and 08:32:42 UTC on 2026-11-06, each exactly six hours after the one before, starting from the 20:32:42 start tick, and each found 1 new item.
+  The service has not restarted since 20:32:42 (0 restarts), and its log shows no POST to a run endpoint in either window. An earlier version of this report promised a tick
+  at 21:28 UTC, which was wrong, because a restart resets the timer. The scheduler runs in the web process, and the page does not mark which rows were scheduled.
 - **Test debts.** `tests/test_main.py` and `tests/test_scheduler.py` empty the `data/briefing.db` of whichever
   checkout runs them. A deployed release links `data/` to production, so running the suite there would have erased the public
-  history. Releases now leave `tests/` out, and it has been moved off the live release. 8 of 25 deliberately broken versions still
+  history. New releases leave `tests/` out, and it has been moved off the live release, which is the only release on the VM. A release staged before this change would keep its `tests/`. 8 of 25 deliberately broken versions still
   pass the suite, including a missing date and a scheduler that stops after one tick. `verify_pr.sh` covers only some of them.
   Removing the overlap guard makes A8 hang rather than fail. All of this is ticket [#23](https://github.com/ambativachan8-cmyk/daily-briefing/issues/23).
 - **Token counts for OpenClaw on NVIDIA are estimates.** That runtime reports zero tokens for NVIDIA.
