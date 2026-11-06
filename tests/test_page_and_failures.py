@@ -4,7 +4,7 @@ Issues #21, #22 and #24: what a visitor sees after each kind of run, and how a d
 import json
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -414,6 +414,14 @@ async def test_busy_database_is_logged_not_silent(raw, monkeypatch, caplog):
     assert response.headers["location"] == "/?notice=busy"
     assert "Database busy" in caplog.text
     assert get_runs() == []
+
+
+@pytest.mark.parametrize("minutes_old, expected", [(9, False), (11, True)])
+def test_left_behind_lock_expires_after_ten_minutes(minutes_old, expected):
+    aged = (datetime.now(timezone.utc) - timedelta(minutes=minutes_old)).isoformat()
+    execute(f"INSERT INTO locks (name, acquired_at) VALUES ('ingestion', '{aged}')")
+    with acquire_lock("ingestion") as acquired:
+        assert acquired is expected
 
 
 def test_error_inside_the_lock_block_reaches_the_caller_and_releases_it():

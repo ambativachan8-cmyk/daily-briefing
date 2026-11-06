@@ -107,6 +107,8 @@ M=[
                 pass"""),
 ("#24 left-behind lock never expires","app/db.py","""            "DELETE FROM locks WHERE name = ? AND acquired_at < ?",""","""            "DELETE FROM locks WHERE name = ? AND acquired_at < '0' AND acquired_at < ?","""),
 ("#24 a recent lock is taken over","app/db.py","LOCK_MAX_AGE_SECONDS = 600","LOCK_MAX_AGE_SECONDS = -600"),
+("#24 lock expires after a minute","app/db.py","LOCK_MAX_AGE_SECONDS = 600","LOCK_MAX_AGE_SECONDS = 60"),
+("#24 lock lasts a day","app/db.py","LOCK_MAX_AGE_SECONDS = 600","LOCK_MAX_AGE_SECONDS = 86400"),
 ("#24 busy database not logged","app/db.py","""        logger.warning("Database busy, could not take the %s lock: %s", name, error)""","""        pass"""),
 ("#24 unreachable path gives a raw 500","app/main.py","@app.exception_handler(OSError)\n",""),
 ("#24 storing a failure can raise","app/db.py","""    except Exception:
