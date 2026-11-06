@@ -320,7 +320,7 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
   each comment. GitHub refuses formal "approve" reviews (self-approval), so the gate is two required
   commit statuses.
 - **Gate strength.** `enforce_admins` is off, so the gates do not bind the owner's account. 49 operator commits, mostly scripts,
-  prompts and reports, went straight to `main`. PRs #20, #25 and #26, all operator work, merged with neither gate, including the security fix itself. #26 changes only documentation and evidence. No operator commit touches
+  prompts and reports, went straight to `main`. PRs #20, #25 and the documentation PRs after them, all operator work, merged with neither gate, including the security fix itself. No operator commit touches
   `app/` or `tests/`. The gate is OS accounts, token permissions and branch protection, not cryptographic separation. The agents'
   token needs Contents write, which is also what a merge needs, so assume it can merge a green PR. Whether it could also bypass the
   gates must be tested when it exists. Turning `enforce_admins` on removes that bypass.
@@ -343,15 +343,18 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
   and pushed the builder away from one, and that URL shows raw JSON if opened directly. Timestamps are raw ISO. A database error during
   a run gives a 500 and stores no row. These are [#21](https://github.com/ambativachan8-cmyk/daily-briefing/issues/21),
   [#22](https://github.com/ambativachan8-cmyk/daily-briefing/issues/22) and [#24](https://github.com/ambativachan8-cmyk/daily-briefing/issues/24).
-  They were found after the team stopped, and the operator did not fix them because agents write the product code.
+  They were found after the team stopped. The operator built and tested a candidate fix for them in [PR #27](https://github.com/ambativachan8-cmyk/daily-briefing/pull/27), and did not merge it or put it live, because agents write the product code.
   Each app restart also adds a run, because the scheduler ticks at startup. The page has no dark-mode styling. A `javascript:` link
   from a feed would be rendered as-is, which cannot happen with today's synthetic feed but would matter on a real one.
+- **An operator mistake on the live service.** On 2026-11-06 at 09:29:22 UTC the operator ran `~/deploy/current/scripts/deploy_app.sh --status` expecting a read-only answer. That
+  copy was an older script, which ignores the flag and deploys. For about 81 seconds the public site served an older database from `~/app`. The production database was not touched, and the
+  previous release was restored at 09:30:43. Run 26 (0 new) is the restart that restore caused, and the next scheduled tick moved. [The evidence](docs/RELEASE_EVIDENCE.md) has the details.
 - **The feed is synthetic,** as the brief allows: one made-up item every 6 hours, matched by a 6-hour
   schedule. A run right after another finds nothing new, as in the brief's example.
 - **The fresh-VM test ran before NVIDIA was added.** `configure_models.sh` handles the key, and it ran on
   the real VM, but not on a fresh one.
 - **Schedule evidence.** Runs 24 and 25 fired at 02:32:42 and 08:32:42 UTC on 2026-11-06, each exactly six hours after the one before, starting from the 20:32:42 start tick, and each found 1 new item.
-  The service has not restarted since 20:32:42 (0 restarts), and its log shows no POST to a run endpoint in either window. An earlier version of this report promised a tick
+  The service did not restart in that time (0 restarts), and its log shows no POST to a run endpoint in either window. An earlier version of this report promised a tick
   at 21:28 UTC, which was wrong, because a restart resets the timer. The scheduler runs in the web process, and the page does not mark which rows were scheduled.
 - **Test debts.** `tests/test_main.py` and `tests/test_scheduler.py` empty the `data/briefing.db` of whichever
   checkout runs them. A deployed release links `data/` to production, so running the suite there would have erased the public
