@@ -1,0 +1,3 @@
+Run now during a DB error: HTTP 200 | body: <!DOCTYPE html> <html lang="en"> <head> 
+rows stored for that failure: 1
+next run after the error clears: HTTP 200 | latest: success

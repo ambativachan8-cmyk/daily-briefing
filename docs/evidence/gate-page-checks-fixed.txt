@@ -1,0 +1,39 @@
+
+Page checks on raw HTML after the first run:
+  ok      a link for each new item
+  ok      says this is the first run
+  ok      dated briefing
+  ok      count of new items
+  ok      history row marked with a check mark
+  ok      Run now control
+  ok      no script intercepts the Run now form
+
+Run now, through the page's form (action=/run-now):
+  ok      Run now adds one history row
+  ok      Run now returns to the page
+  ok      a run with nothing new says so
+  ok      an immediate second Run now adds no row
+  ok      the limited attempt stays on the page
+  ok      the limited attempt tells the user
+  ok      POST /ingest is no way around the limit
+  ok      the limit is a minute: a retry after 10 s adds no row
+  (waiting out the 1-minute limit for the failure and recovery checks)
+  | Set fail_next_run to true
+  ok      a failed fetch is stored as a failed run
+  ok      the failed run shows a cross
+  ok      the next good run succeeds
+
+What is new, by item links on the page (A1 to A5):
+  ok      A1 first run on 3 items shows 3
+  ok      A1 first run on 3 items shows 3, and the run stored that count
+  ok      A2 same feed shows 0
+  ok      A2 same feed shows 0, and the run stored that count
+  ok      A3 different order shows 0
+  ok      A3 different order shows 0, and the run stored that count
+  ok      A4 one item added shows exactly 1
+  ok      A4 one item added shows exactly 1, and the run stored that count
+  ok      item removed shows 0
+  ok      item removed shows 0, and the run stored that count
+  ok      A5 removed item coming back shows 0
+  ok      A5 removed item coming back shows 0, and the run stored that count
+page=ok

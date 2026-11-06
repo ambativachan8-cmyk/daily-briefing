@@ -1,0 +1,25 @@
+PASS | fresh start: scheduler tick creates first run | [{'id': 1, 'timestamp': '2026-11-06T09:28:41.462870+00:00', 'status': 'success', 'error': None, 'new_items_count': 12, 'is_first_run': 1}]
+PASS | page: first run stated in words, items and links visible | 
+PASS | Run now adds row with 0 new | (200, 2)
+PASS | page after Run now: 0 new is shown | 
+PASS | page after a 0-new run keeps the earlier briefing | 
+PASS | second click refused, back on the page with a message | 200
+OBS  | GET /run-now (reload via address bar after a click) | (200, '<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <meta nam')
+OBS  | direct uvicorn trusts XFF from loopback; matters only if 8000 is exposed (it is loopback on the VM) | 200
+PASS | 30 parallel Run now from distinct IPs: no 5xx | {200: 30}
+PASS | no duplicate items after flood | (12, 12)
+PASS | no run left in 'running' after flood | 30
+OBS  | failed rows from flood | []
+PASS | fail switch: run stored failed and shown | Feed configured to fail (fail_next_run=true)
+PASS | recovery: next run succeeds | success
+PASS | kill -9 mid-run state: orphan marked failed, lock cleared on restart | [{'id': 36, 'timestamp': '2026-11-06T09:28:43.628915+00:00', 'status': 'failed', 'error': 'Orphaned run (likely crash)', 'new_items_count': 0, 'is_first_run': 0}]
+PASS | run works after crash recovery | 200
+OBS  | restart adds a run row (documented wart) | (38, 39)
+PASS | new feed items: only unseen counted and listed | (27, 27)
+PASS | feed HTML is escaped | 200
+OBS  | javascript: link from a feed is rendered as-is (only reachable if a real feed is added) | True
+PASS | malformed source: failed run stored | Invalid FEED_ITEMS_JSON environment variable
+PASS | wrong-shape source: failed run stored, no 500 | (200, 'failed', "argument of type 'int' is not a container or iterable")
+OBS  | database removed under a running service: GET / | (503, 'The briefing is unavailable right now. Please try again shor')
+OBS  | database removed under a running service: GET /health | (200, '{"status":"ok","timestamp":"2026-11-06T09:28:58.259251+00:00')
+OBS  | corrupt database at start: process alive? (Restart=always would loop; recovery is the pre-deploy backup) | False

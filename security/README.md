@@ -99,7 +99,7 @@ Recorded results for the delivered commit are in [results/](results/).
 - **Merged scripts become control-plane code.** `dispatch.sh` updates its own checkout with `git pull` before each run, and that
   checkout runs as `ubuntu`, which has sudo. No gate treats `scripts/` specially, so the owner must read any PR that touches it with
   that in mind.
-- **The gates do not bind the owner's account.** `enforce_admins` is off. PRs #20, #25 and #26 merged with neither gate.
+- **The gates do not bind the owner's account.** `enforce_admins` is off. PRs #20, #25 and every later operator PR merged with neither gate.
 - **Stub-based fixtures.** Fork and outsider scenarios use the stub `gh`, because one account cannot fork its own repository
   or act as an outsider. Its field names were checked against real output, and the routing selectors were also run read-only
   against GitHub.

@@ -3,8 +3,8 @@
 A small scheduled briefing that checks one feed, reports only what is new since the last
 run, and publishes a dated briefing with a run history on a public page.
 
-The product code in this repository is written by a team of autonomous agents
-(OpenClaw + Hermes Agent). The human engineer set up the infrastructure, the agent
+The product code in this repository was built by a team of autonomous agents
+(OpenClaw + Hermes Agent); the last four tickets were fixed by the human engineer (PR #27, disclosed in DELIVERY.md). The human engineer set up the infrastructure, the agent
 runtimes and the ticket protocol, and reviews/merges. See:
 
 - [agents/](agents/) — agent roster, prompts, sanitized configs, ticket protocol
@@ -17,7 +17,7 @@ runtimes and the ticket protocol, and reviews/merges. See:
 
 ## Run it locally
 
-Use a fresh clone: the test suite empties `data/briefing.db` in the checkout it runs in. These are Linux or macOS commands, and on Windows use `python` and `.venv/Scripts/`. The tests were run on Python 3.14; the live app runs on 3.12.
+The test suite uses temporary databases and cannot reach `data/briefing.db`. These are Linux or macOS commands, and on Windows use `python` and `.venv/Scripts/`. The tests were run on Python 3.14; the live app runs on 3.12.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt

@@ -1,0 +1,65 @@
+KILLED | dedup off: every item new | 1 failed, 1 passed in 1.13s
+KILLED | id from title not feed id/link | 1 failed in 1.03s
+KILLED | first-run mark never set | 1 failed in 0.97s
+KILLED | failed run saved as success | 1 failed, 5 passed in 1.73s
+KILLED | fail switch never consumed | 1 failed, 38 passed in 3.05s
+KILLED | rate limit off | 1 failed, 7 passed in 1.85s
+KILLED | rate limit weak (5s) | 1 failed, 9 passed in 1.71s
+KILLED | rate limit weak (59s) | 1 failed, 9 passed in 2.04s
+KILLED | rate limit weak (1s) | 1 failed, 9 passed in 1.90s
+KILLED | /ingest not rate limited | 1 failed, 10 passed in 1.79s
+KILLED | Run now button does nothing | 1 failed in 0.94s
+KILLED | overlap flag never set on run-now | 1 failed, 7 passed in 6.80s
+KILLED | overlap flag never checked on run-now | 1 failed, 7 passed in 6.87s
+KILLED | latest run is oldest | 1 failed, 1 passed in 1.08s
+KILLED | same-time runs oldest first | 1 failed, 81 passed in 9.91s
+KILLED | db lock ignored | 1 failed, 46 passed in 9.75s
+KILLED | stale cleanup no-op | 1 failed, 95 passed in 8.23s
+KILLED | scheduler never started | 1 failed, 96 passed in 8.15s
+KILLED | scheduler dies after first error | 1 failed, 99 passed in 8.36s
+KILLED | scheduler stops after first tick | 1 failed, 12 passed in 2.29s
+KILLED | scheduler ignores its interval | 1 failed, 12 passed in 2.31s
+KILLED | page lists old items too | 1 failed, 3 passed in 1.48s
+KILLED | page drops item link | 1 failed in 1.06s
+KILLED | page shows no date | 1 failed, 13 passed in 2.31s
+KILLED | history marks failure as tick | 1 failed, 5 passed in 1.51s
+KILLED | history hides new count | 1 failed, 6 passed in 1.81s
+KILLED | first-run badge dropped from the briefing heading | 1 failed, 57 passed in 4.64s
+KILLED | title rendered unescaped (XSS) | 1 failed, 14 passed in 2.45s
+KILLED | #21 first-run sentence removed | 1 failed, 57 passed in 4.87s
+KILLED | #21 earlier briefing never shown | 1 failed, 14 passed in 2.33s
+KILLED | #21 earlier briefing not labelled | 1 failed, 59 passed in 5.19s
+KILLED | #21 earlier briefing lists every item seen | 1 failed, 60 passed in 5.37s
+KILLED | #21 earlier briefing is the oldest | 1 failed, 60 passed in 5.43s
+KILLED | #21 earlier briefing unescaped title | 1 failed, 14 passed in 2.41s
+KILLED | #21 earlier briefing unescaped description | 1 failed, 14 passed in 2.34s
+KILLED | #21 unfinished run called quiet | 1 failed, 80 passed in 6.21s
+KILLED | #21 earlier briefing hidden after a failed run | 1 failed, 61 passed in 5.31s
+KILLED | #21 quiet line removed | 1 failed, 1 passed in 1.06s
+KILLED | #21 items not in feed order | 1 failed, 63 passed in 5.56s
+KILLED | #22 redirect keeps the POST | 1 failed in 0.96s
+KILLED | #22 no way back from the address bar | 1 failed, 67 passed in 5.91s
+KILLED | #22 refusal message lost | 1 failed, 7 passed in 1.81s
+KILLED | #22 notice reflects the URL | 1 failed, 7 passed in 1.72s
+KILLED | #22 raw ISO in the history | 1 failed, 70 passed in 6.42s
+KILLED | #22 raw ISO in the briefing | 1 failed, 70 passed in 5.97s
+KILLED | #22 time without a timezone | 1 failed, 59 passed in 4.98s
+KILLED | #22 script intercepts the form | 1 failed, 69 passed in 5.94s
+KILLED | #24 failure not stored | 1 failed, 72 passed in 5.90s
+KILLED | #24 failure re-raised | 1 failed, 72 passed in 6.02s
+KILLED | #24 failed start adds no row | 1 failed, 72 passed in 6.44s
+KILLED | #24 failed run left as running | 1 failed, 73 passed in 6.07s
+KILLED | #24 a failed run keeps its partial items | 1 failed, 78 passed in 7.24s
+KILLED | #24 lock release failure raises | 1 failed, 82 passed in 18.04s
+KILLED | #24 left-behind lock never expires | 1 failed, 82 passed in 6.76s
+KILLED | #24 a recent lock is taken over | 1 failed, 46 passed in 4.38s
+KILLED | #24 lock expires after a minute | 1 failed, 85 passed in 7.63s
+KILLED | #24 lock lasts a day | 1 failed, 86 passed in 7.54s
+KILLED | #24 busy database not logged | 1 failed, 84 passed in 7.11s
+KILLED | #24 unreachable path gives a raw 500 | 1 failed, 83 passed in 7.30s
+KILLED | #24 storing a failure can raise | 1 failed, 76 passed in 6.88s
+KILLED | #24 lock never released | 1 failed, 1 passed in 1.03s
+KILLED | #24 every lock error reads as busy | 1 failed, 75 passed in 6.46s
+KILLED | #24 unreadable page gives a raw 500 | 1 failed, 76 passed in 6.84s
+KILLED | #24 scheduler overlap not reported | 1 failed, 77 passed in 6.41s
+mutants=64 survived=0 hung=0 notapplied=0
