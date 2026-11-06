@@ -137,7 +137,10 @@ async def fetch_feed(consume_config: bool = False, conn=None, current_time: date
 async def ingest_feed(current_time: datetime | None = None) -> dict[str, Any]:
     """
     Ingest the feed: fetch, compare with stored items, store new items and run atomically.
+    Database errors are caught and stored as failed runs when possible, or logged when not.
+    No exception escapes this function.
     """
+    import logging
     timestamp = (current_time or datetime.now(timezone.utc)).isoformat()
 
     with acquire_lock("ingestion") as acquired:
@@ -153,84 +156,115 @@ async def ingest_feed(current_time: datetime | None = None) -> dict[str, Any]:
             }
 
         from app.db import get_conn
-        with get_conn() as conn:
+        conn = None
+        run_id = None
+        try:
+            conn_cm = get_conn()
+            conn = conn_cm.__enter__()
             run_id = create_run(timestamp, "running", conn=conn)
             conn.commit()
 
-            try:
-                feed_items, error = await fetch_feed(consume_config=True, conn=conn, current_time=current_time)
+            feed_items, error = await fetch_feed(consume_config=True, conn=conn, current_time=current_time)
 
-                if error:
-                    update_run_status(run_id, "failed", error, new_items_count=0, is_first_run=False, conn=conn)
-                    conn.commit()
-                    return {
-                        "run_id": run_id,
-                        "timestamp": timestamp,
-                        "status": "failed",
-                        "error": error,
-                        "new_items_count": 0,
-                        "new_items": [],
-                        "is_first_run": False,
-                    }
-
-                known_ids = get_all_item_ids()
-                is_first_run = len(known_ids) == 0
-
-                new_items = []
-                all_items_in_run = []
-                for item in feed_items:
-                    item_id = generate_item_id(item)
-                    all_items_in_run.append((
-                        run_id,
-                        item_id,
-                        item.get("title", ""),
-                        item.get("link", ""),
-                        item.get("description", "")
-                    ))
-                    if item_id not in known_ids:
-                        new_items.append(
-                            (
-                                item_id,
-                                item.get("id", item_id),
-                                item.get("title", ""),
-                                item.get("link", ""),
-                                item.get("description", ""),
-                                run_id,
-                            )
-                        )
-                        known_ids.add(item_id)
-
-                if new_items:
-                    insert_items(new_items, conn=conn)
-                insert_run_items(all_items_in_run, conn=conn)
-
-                update_run_status(run_id, "success", None, new_items_count=len(new_items), is_first_run=is_first_run, conn=conn)
+            if error:
+                update_run_status(run_id, "failed", error, new_items_count=0, is_first_run=False, conn=conn)
                 conn.commit()
-
-                return {
-                    "run_id": run_id,
-                    "timestamp": timestamp,
-                    "status": "success",
-                    "error": None,
-                    "new_items_count": len(new_items),
-                    "new_items": [{"id": i[0], "title": i[2], "link": i[3], "description": i[4]} for i in new_items],
-                    "is_first_run": is_first_run,
-                }
-
-            except Exception as e:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-                update_run_status(run_id, "failed", str(e), new_items_count=0, is_first_run=False, conn=conn)
-                conn.commit()
+                conn_cm.__exit__(None, None, None)
                 return {
                     "run_id": run_id,
                     "timestamp": timestamp,
                     "status": "failed",
-                    "error": str(e),
+                    "error": error,
                     "new_items_count": 0,
                     "new_items": [],
                     "is_first_run": False,
                 }
+
+            known_ids = get_all_item_ids()
+            is_first_run = len(known_ids) == 0
+
+            new_items = []
+            all_items_in_run = []
+            for item in feed_items:
+                item_id = generate_item_id(item)
+                all_items_in_run.append((
+                    run_id,
+                    item_id,
+                    item.get("title", ""),
+                    item.get("link", ""),
+                    item.get("description", "")
+                ))
+                if item_id not in known_ids:
+                    new_items.append(
+                        (
+                            item_id,
+                            item.get("id", item_id),
+                            item.get("title", ""),
+                            item.get("link", ""),
+                            item.get("description", ""),
+                            run_id,
+                        )
+                    )
+                    known_ids.add(item_id)
+
+            if new_items:
+                insert_items(new_items, conn=conn)
+            insert_run_items(all_items_in_run, conn=conn)
+
+            update_run_status(run_id, "success", None, new_items_count=len(new_items), is_first_run=is_first_run, conn=conn)
+            conn.commit()
+            conn_cm.__exit__(None, None, None)
+
+            return {
+                "run_id": run_id,
+                "timestamp": timestamp,
+                "status": "success",
+                "error": None,
+                "new_items_count": len(new_items),
+                "new_items": [{"id": i[0], "title": i[2], "link": i[3], "description": i[4]} for i in new_items],
+                "is_first_run": is_first_run,
+            }
+
+        except Exception as e:
+            # Database error during run - try to store as failed run if DB is writable
+            if run_id is not None and conn is not None:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+                try:
+                    update_run_status(run_id, "failed", str(e), new_items_count=0, is_first_run=False, conn=conn)
+                    conn.commit()
+                    if conn_cm:
+                        conn_cm.__exit__(None, None, None)
+                    return {
+                        "run_id": run_id,
+                        "timestamp": timestamp,
+                        "status": "failed",
+                        "error": str(e),
+                        "new_items_count": 0,
+                        "new_items": [],
+                        "is_first_run": False,
+                    }
+                except Exception:
+                    # Cannot write failed run to DB - log it
+                    logging.error(f"Failed to store failed run {run_id}: {e}")
+            else:
+                # Could not even create run - log it
+                logging.error(f"Database error before run creation: {e}")
+            return {
+                "run_id": run_id,
+                "timestamp": timestamp,
+                "status": "failed",
+                "error": str(e),
+                "new_items_count": 0,
+                "new_items": [],
+                "is_first_run": False,
+            }
+        finally:
+            if conn is not None and 'conn_cm' in locals():
+                try:
+                    conn_cm.__exit__(None, None, None)
+                except Exception:
+                    pass
 
