@@ -2,10 +2,12 @@
 Regression tests covering items 1-7 requested by the owner.
 """
 import sys
+import sqlite3
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import tempfile
 import pytest
+from unittest.mock import patch
 
 from app.db import init_db, get_db_path, get_runs, get_run, get_items_by_run, set_config, get_conn
 from app.feed import ingest_feed, fetch_feed, get_feed_items, FEED_START_DATE, cleanup_stale_runs
@@ -161,3 +163,42 @@ async def test_regression_7_cleanup_stale_runs(temp_db):
         assert run is not None, f"Run {run_id} not found"
         assert run['status'] == 'failed'
         assert run['error'] == 'Orphaned run (likely crash)'
+
+
+@pytest.mark.asyncio
+async def test_regression_8_db_error_at_run_start_stored_as_failed(temp_db):
+    """8. Database error at run start (create_run raises) -> no unhandled exception, failed run stored, lock released, next run succeeds."""
+    def mock_create_run_fail(*args, **kwargs):
+        raise sqlite3.OperationalError("disk I/O error")
+
+    # First call should fail at create_run
+    with patch("app.feed.create_run", side_effect=mock_create_run_fail):
+        res_fail = await ingest_feed(current_time=FEED_START_DATE)
+        # Should not raise unhandled exception
+        assert res_fail["status"] == "failed"
+        assert "disk I/O error" in res_fail["error"]
+        # run_id may be None if create_run failed before returning
+    
+    # Second call should succeed (lock released)
+    res_success = await ingest_feed(current_time=FEED_START_DATE)
+    assert res_success["status"] == "success"
+    assert res_success["new_items_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_regression_9_db_error_at_run_start_logged_when_unwritable(temp_db):
+    """9. Database error at run start when DB completely unavailable -> error logged, no exception escapes, next run succeeds."""
+    def mock_get_conn_fail():
+        raise sqlite3.OperationalError("unable to open database file")
+
+    with patch("app.db.get_conn", side_effect=mock_get_conn_fail):
+        res_fail = await ingest_feed(current_time=FEED_START_DATE)
+        # Should not raise unhandled exception
+        assert res_fail["status"] == "failed"
+        assert "unable to open database file" in res_fail["error"]
+        assert res_fail["run_id"] is None
+    
+    # Next run should succeed (lock released)
+    res_success = await ingest_feed(current_time=FEED_START_DATE)
+    assert res_success["status"] == "success"
+    assert res_success["new_items_count"] == 3

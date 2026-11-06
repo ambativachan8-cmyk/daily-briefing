@@ -265,14 +265,10 @@ def acquire_lock(name: str):
     Only the holder releases the lock.
     """
     from datetime import datetime, timezone
-    try:
-        conn = sqlite3.connect(get_db_path(), timeout=0.1)
-    except Exception:
-        yield False
-        return
-
+    conn = None
     acquired = False
     try:
+        conn = sqlite3.connect(get_db_path(), timeout=0.1)
         conn.execute(
             "INSERT INTO locks (name, acquired_at) VALUES (?, ?)",
             (name, datetime.now(timezone.utc).isoformat()),
@@ -280,16 +276,17 @@ def acquire_lock(name: str):
         conn.commit()
         acquired = True
         yield True
-    except (sqlite3.IntegrityError, sqlite3.OperationalError):
+    except (sqlite3.IntegrityError, sqlite3.OperationalError, Exception):
         yield False
     finally:
-        if acquired:
+        if acquired and conn:
             try:
                 conn.execute("DELETE FROM locks WHERE name = ?", (name,))
                 conn.commit()
             except Exception:
                 pass
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def cleanup_stale_runs() -> None:
