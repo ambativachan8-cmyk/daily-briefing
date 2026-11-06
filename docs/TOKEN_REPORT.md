@@ -1,6 +1,6 @@
 # Token usage report
 
-Generated 2026-11-05T22:18:28Z from [`docs/evidence/runs.jsonl`](evidence/runs.jsonl) (176 run attempts).
+Generated 2026-11-05T22:18:28Z from [`docs/evidence/runs.jsonl`](evidence/runs.jsonl) (176 run attempts), so it stops at 2026-11-05. Two later runs on 2026-11-06 are [not in it](evidence/supervised-24-run-2026-11-06.md): the manager with 423,293 tokens, and the backend builder with 36 turns and tokens reported as zero.
 Rebuild it yourself: `bash scripts/token_report.sh docs/evidence/runs.jsonl /tmp/report.md` (needs `jq`).
 Counts are reported by the runtimes themselves (Hermes `--usage-file`, OpenClaw
 `--json` agent meta). **Actual cost: $0** — every key is free tier. The "list-price
