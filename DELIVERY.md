@@ -357,7 +357,7 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
 - **The fresh-VM test ran before NVIDIA was added.** `configure_models.sh` handles the key, and it ran on
   the real VM, but not on a fresh one.
 - **Schedule evidence.** Runs 24 and 25 fired at 02:32:42 and 08:32:42 UTC on 2026-11-06, each exactly six hours after the one before, starting from the 20:32:42 start tick, and each found 1 new item.
-  The service did not restart in that time (0 restarts), and its log shows no POST to a run endpoint in the minutes around either firing. A Run Now between them (run 23 at 21:49:25) did not move the schedule. An earlier version of this report promised a tick
+  The service did not restart in that time (0 restarts), and its log shows no POST to a run endpoint in the minutes around either firing. A Run Now before them (run 23 at 21:49:25 UTC on 2026-11-05) did not move the schedule. An earlier version of this report promised a tick
   at 21:28 UTC, which was wrong, because a restart resets the timer. The scheduler runs in the web process, and the page does not mark which rows were scheduled.
 - **Test debts.** `tests/test_main.py` and `tests/test_scheduler.py` empty the `data/briefing.db` of whichever
   checkout runs them. A deployed release links `data/` to production, so running the suite there would have erased the public
