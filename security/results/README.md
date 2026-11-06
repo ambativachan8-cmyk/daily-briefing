@@ -19,9 +19,9 @@ and the same script returns 0 with a user bus. `8d04045` adds a `systemctl` stub
 `git diff 75efbb3 8d04045 -- scripts` is empty, so the control-plane scripts under test are the same in both commits.
 Run names replace absolute paths in these files. No file holds a value from the real secrets file (checked on the VM before copying).
 
-**Re-run on 2026-11-05.** `agent_boundary.sh`, with positive controls added so a broken probe cannot look like a denial, was re-run
+**Re-run on 2026-11-05.** `agent_boundary.sh`, with positive controls added so that a total failure of the probes cannot look like a set of denials, was re-run
 on the real host: [28 proven, 0 failed](../../docs/evidence/agent-boundary-rerun.log). The other proofs were not re-run. Their
-scripts are unchanged, and they should run on a disposable host. **One soft result:** the `evil_requirements` baseline shows that pip
+scripts are unchanged, and they should run on a disposable host. The controls do not catch a single wrong path or command, because a denial passes on any non-zero exit. **One soft result:** the `evil_requirements` baseline shows that pip
 was reached with no refusal, not that the hostile directive took effect, and on the audited commit that check cannot fail.
 
 ## Not proven here

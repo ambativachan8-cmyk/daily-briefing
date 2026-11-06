@@ -17,7 +17,7 @@ runtimes and the ticket protocol, and reviews/merges. See:
 
 ## Run it locally
 
-Use a fresh clone: the test suite empties `data/briefing.db` in the checkout it runs in.
+Use a fresh clone: the test suite empties `data/briefing.db` in the checkout it runs in. These are Linux or macOS commands, and on Windows use `python` and `.venv/Scripts/`. The tests were run on Python 3.14; the live app runs on 3.12.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
