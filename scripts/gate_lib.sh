@@ -5,6 +5,13 @@
 GATE_SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="ambativachan8-cmyk/daily-briefing"
 OWNER="${REPO%%/*}"
+# The agents' GitHub identity: a GitHub App installed on this repository only, with Contents, Issues and Pull
+# requests, and no Commit statuses, Workflows or Administration. gh shows its PRs and issues as app/<slug> and its
+# comments as <slug>. The key stays with the control plane; agents only ever hold a token that lasts an hour.
+AGENT_APP="daily-briefing-agents"
+AGENT_APP_ID="5640876"
+AGENT_APP_INSTALLATION="179219050"
+AGENT_APP_KEY="$HOME/.secrets/agent-app.pem"
 BASE_BRANCH="main"
 CONTROL="$HOME/control"
 AGENT_HOME="${AGENT_HOME:-/home/agent}"
@@ -37,7 +44,7 @@ managed_tickets() {
   gh issue list --repo "$REPO" --state open --limit 100 --json number,title,labels,author \
     --jq "[.[]
         | ([.labels[].name]) as \$l
-        | select(.author.login == \"$OWNER\")
+        | select(.author.login == \"$OWNER\" or .author.login == \"app/$AGENT_APP\")
         | select(any(\$l[]; . == \"blocked\") | not)
         | select(any(\$l[]; startswith(\"type:\")))
         | select(([\$l[] | select(startswith(\"role:\"))] | length) <= 1)
@@ -56,9 +63,9 @@ eligible_pr() {
   count="$(jq --argjson n "$n" --arg o "$OWNER" '[.[] | select(any(.closingIssuesReferences[]?; .number == $n))
       | select(.isCrossRepository == false and .headRepositoryOwner.login == $o)] | length' <<<"$prs")"
   [ "$count" = 1 ] || { [ "$count" = 0 ] || echo "ticket #$n: $count same-repository PRs claim it; ambiguous, none selected" >&2; return 1; }
-  pr="$(jq -r --argjson n "$n" --arg o "$OWNER" --arg b "$BASE_BRANCH" '[.[] | select(any(.closingIssuesReferences[]?; .number == $n))
+  pr="$(jq -r --argjson n "$n" --arg o "$OWNER" --arg a "app/$AGENT_APP" --arg b "$BASE_BRANCH" '[.[] | select(any(.closingIssuesReferences[]?; .number == $n))
       | select(.isCrossRepository == false and .headRepositoryOwner.login == $o)][0]
-      | select(.baseRefName == $b and .author.login == $o and (.closingIssuesReferences | length) == 1) | .number' <<<"$prs")"
+      | select(.baseRefName == $b and (.author.login == $o or .author.login == $a) and (.closingIssuesReferences | length) == 1) | .number' <<<"$prs")"
   [ -n "$pr" ] || { echo "ticket #$n: its PR has an unexpected base or author, or closes several tickets; none selected" >&2; return 1; }
   echo "$pr"
 }
@@ -70,13 +77,31 @@ pr_facts() {
 }
 
 # Prints the reason this PR may not be treated as a candidate, or nothing.
+# Log the agent account in with a new App token. Each agent run is limited to 40 minutes and a token lasts 60, so
+# calling this before every run is enough. On failure the agent simply cannot reach GitHub.
+refresh_agent_login() {
+  [ -r "$AGENT_APP_KEY" ] || { echo "no App key; the agents have no GitHub login" >&2; return 1; }
+  local now head claims sig jwt token
+  b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+  now="$(date +%s)"
+  head="$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)"
+  claims="$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "$AGENT_APP_ID" | b64url)"
+  sig="$(printf '%s.%s' "$head" "$claims" | openssl dgst -sha256 -sign "$AGENT_APP_KEY" | b64url)"
+  jwt="$head.$claims.$sig"
+  token="$(curl -sS -m 30 -K <(printf 'header = "Authorization: Bearer %s"\n' "$jwt") \
+    -H 'Accept: application/vnd.github+json' -X POST \
+    "https://api.github.com/app/installations/$AGENT_APP_INSTALLATION/access_tokens" | jq -r '.token // empty')"
+  [ -n "$token" ] || { echo "could not get an App token; the agents have no GitHub login" >&2; return 1; }
+  printf '%s\n' "$token" | as_agent sh -c 'gh auth login --with-token --hostname github.com && gh auth setup-git'
+}
+
 candidate_problem() {  # <facts json>
-  jq -r --arg o "$OWNER" --arg b "$BASE_BRANCH" '
+  jq -r --arg o "$OWNER" --arg a "app/$AGENT_APP" --arg b "$BASE_BRANCH" '
     if .state != "OPEN" then "PR is not open"
     elif .isCrossRepository != false then "fork PR"
     elif .headRepositoryOwner.login != $o then "head is not in this repository"
     elif .baseRefName != $b then "base is \(.baseRefName), expected \($b)"
-    elif .author.login != $o then "PR author is not the owner account"
+    elif .author.login != $o and .author.login != $a then "PR author is neither the owner account nor the agent App"
     elif (.headRefOid | test("^[0-9a-f]{40}$") | not) then "head is not a full SHA"
     else empty end' <<<"$1"
 }

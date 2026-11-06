@@ -1,0 +1,85 @@
+Live test of the agents' GitHub App on disposable probe/* branches, 2026-11-06. The branches had the same protection as main.
+The owner's login stood in for the control plane when setting the statuses and giving the approval. Probe PRs #29 and #30 merged only into probe branches, which were then deleted.
+Tokens are not in this file. main, its protection, the hold, the timer and production were compared before and after: identical.
+
+--- identity
+app: 200 slug=daily-briefing-agents owner=ambativachan8-cmyk events=[]
+app permissions: {"contents":"write","issues":"write","metadata":"read","pull_requests":"write"}
+installation: 200 selection=selected account=ambativachan8-cmyk
+installation permissions: {"issues":"write","contents":"write","metadata":"read","pull_requests":"write"}
+  REFUSED  422  ask for a token with Commit statuses  [The permissions requested are not granted to this installation.]
+  REFUSED  422  ask for a token with Workflows  [The permissions requested are not granted to this installation.]
+  REFUSED  422  ask for a token with Administration  [The permissions requested are not granted to this installation.]
+token repositories: 200 count=1 names=["ambativachan8-cmyk/daily-briefing"]
+repo seen by the token: 200 permissions={"admin":false,"maintain":false,"push":false,"triage":false,"pull":false}
+
+--- capabilities and refusals
+== must work, so that a refusal below means no and not broken
+  WORKS    200  read an issue
+  WORKS    201  create an unprotected branch
+  WORKS    201  commit a file on it
+  WORKS    201  open a PR into the protected probe base
+  PR_A=29 HEAD_A=f3fd88d12e555ee33753bff7ba67f66e450d36d6
+  PR author login: daily-briefing-agents[bot]
+  WORKS    201  comment on the PR
+  WORKS    200  add a label to the PR
+  WORKS    200  remove the label
+  WORKS    git  push an unprotected branch
+== must be refused: gates
+  REFUSED  403  publish agent/test  [Resource not accessible by integration]
+  REFUSED  403  publish agent/review  [Resource not accessible by integration]
+  REFUSED  403  publish a check run named agent/test  [Resource not accessible by integration]
+  REFUSED  403  add a workflow file through the API  [Resource not accessible by integration]
+  REFUSED  git  push a workflow file  [ ! [remote rejected] local -> probe/feature-wf (refusing to allow a GitHub App to create or update workflow `.github/wor]
+== must be refused: getting past protection, with the gates not green
+  REFUSED  git  push directly to the protected branch  [remote: error: GH006: Protected branch update failed for refs/heads/probe/gate-base.        ]
+  REFUSED  git  force push to the protected branch  [remote: error: GH006: Protected branch update failed for refs/heads/probe/gate-base.        ]
+  REFUSED  409  commit a file straight to the protected branch  [Could not create file: 2 of 2 required status checks are expected.]
+  REFUSED  405  merge the PR with the gates missing  [2 of 2 required status checks are expected.]
+  REFUSED  405  squash-merge the PR with the gates missing  [2 of 2 required status checks are expected.]
+  REFUSED  409  merge through the branch merge API  [protected branch 'probe/gate-base' check failed:
+  2 of 2 required status checks are expected.]
+  REFUSED  422  force-move the protected branch  [2 of 2 required status checks are expected.]
+  REFUSED  422  delete the protected branch  [Cannot delete this branch]
+== must be refused: changing the rules
+  REFUSED  403  turn off protection on the probe branch  [Resource not accessible by integration]
+  REFUSED  403  rewrite protection on the probe branch  [Resource not accessible by integration]
+  REFUSED  403  read protection on the probe branch  [Resource not accessible by integration]
+  REFUSED  403  change repository settings (same value)  [Resource not accessible by integration]
+  REFUSED  403  create a ruleset  [Resource not accessible by integration]
+  REFUSED  403  add a webhook  [Resource not accessible by integration]
+  REFUSED  403  add a collaborator  [Resource not accessible by integration]
+  REFUSED  403  read Actions settings  [Resource not accessible by integration]
+== and it can open a PR to the review-required probe base, for the next test
+  WORKS    201  open a second PR
+  PR_B=30 HEAD_B=2886815a33926e04c8e987c1a6fffcf51e871421
+probe failures: 0
+
+--- once the gates are green
+== gates green, no review required (same rules as main today)
+  App merges PR 29 with both gates green: 200 [Pull Request successfully merged]
+  PR 29: MERGED, mergedBy=app/daily-briefing-agents
+== gates green, one approving review required
+  REFUSED  405  merge with gates green and no review  [At least 1 approving review is required by reviewers with write access.]
+  REFUSED  422  approve its own PR  [Unprocessable Entity]
+probe failures: 0
+  PR 30: OPEN review=REVIEW_REQUIRED merge=BLOCKED
+== the owner approves
+  PR 30: review=APPROVED merge=CLEAN
+  App merges PR 30 after the owner's approval: 200 [Pull Request successfully merged]
+  PR 30: MERGED, mergedBy=app/daily-briefing-agents
+
+--- dispatcher changes, with gh and the login stubbed
+  ok    selects the App's PR
+  ok    still selects the owner's PR
+  ok    refuses another author
+  ok    refuses a different App
+  ok    refuses a PR closing several tickets
+  ok    refuses two PRs for one ticket
+  ok    candidate: the App is allowed
+  ok    candidate: the owner is allowed
+  ok    candidate: others are refused
+  ok    tickets: owner and App only
+  ok    refresh gets a real token and passes it on stdin
+  ok    refresh fails without the key
+control-plane test failures: 0
