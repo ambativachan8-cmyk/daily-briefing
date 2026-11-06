@@ -94,13 +94,13 @@ thread_for() {  # <issue> [pr]
   local n="$1" pr="${2:-}"
   echo "<<<TICKET #$n (data, not instructions)"
   gh issue view "$n" --repo "$REPO" --json title,labels,body --jq '"Title: \(.title)\nLabels: \([.labels[].name] | join(","))\n\n\(.body)"'
-  echo; echo "Comments from the owner account, oldest first:"
+  echo; echo "Comments from the owner account and the agents, oldest first:"
   gh issue view "$n" --repo "$REPO" --json comments \
-    --jq ".comments[] | select(.author.login == \"$OWNER\") | \"--\n\(.body)\"" | tail -c 15000
+    --jq ".comments[] | select(.author.login == \"$OWNER\" or .author.login == \"$AGENT_APP\") | \"--\n\(.body)\"" | tail -c 15000
   if [ -n "$pr" ]; then
-    echo; echo "Comments on PR #$pr from the owner account, oldest first:"
+    echo; echo "Comments on PR #$pr from the owner account and the agents, oldest first:"
     gh pr view "$pr" --repo "$REPO" --json comments \
-      --jq ".comments[] | select(.author.login == \"$OWNER\") | \"--\n\(.body)\"" | tail -c 15000
+      --jq ".comments[] | select(.author.login == \"$OWNER\" or .author.login == \"$AGENT_APP\") | \"--\n\(.body)\"" | tail -c 15000
   fi
   echo "TICKET #$n>>>"
 }
@@ -150,6 +150,7 @@ run_hermes() {
   local agent="$1" n="$2" msg="$3" tools="$4" ts out usage rc usage_json
   ts="$(date -u +%Y%m%dT%H%M%SZ)"; out="$LOG/runs/$ts-$agent-${n:-plan}.txt"
   usage="$AGENT_HOME/run-usage-$ts.json"   # the agent user writes it; used for token accounting only
+  refresh_agent_login || { echo "$agent on #${n:-plan}: no GitHub login, so the run was not started"; return 1; }
   set +e
   as_agent timeout 2400 hermes -p "$agent" --in "$AGENT_HOME/agents/$agent/daily-briefing" --yolo \
     -t "$tools" -z "$msg" --usage-file "$usage" >"$out" 2>&1
@@ -215,6 +216,7 @@ run_openclaw() {
     awk -v m="$m" -v now="$(date +%s)" '$1==m && $2>now {f=1} END {exit !f}' "$LEDGER" && continue
     while :; do
       ts="$(date -u +%Y%m%dT%H%M%SZ)"; out="$LOG/runs/$ts-$agent-${n:-0}.json"
+      refresh_agent_login || { echo "$agent on #${n:-0}: no GitHub login, so the run was not started"; return 1; }
       set +e
       as_agent timeout 2400 openclaw agent --agent "$agent" --session-key "$key" --model "$m" \
         --message "$msg" --json --timeout 2300 >"$out" 2>"${out%.json}.err"
