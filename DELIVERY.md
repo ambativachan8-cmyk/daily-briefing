@@ -5,7 +5,7 @@
 > a database error during a run gives a 500 and stores no failed row ([#24](https://github.com/ambativachan8-cmyk/daily-briefing/issues/24)).
 > The team needed more human correction than we wanted, and section 4 says where. After delivery, an audit by Codex, which the
 > operator ran separately from the delivery team, found the agent workflow had no real security boundary. That is reproduced and fixed in code, but **no real ticket has gone through the fixed workflow yet**:
-> the dispatcher stays stopped until the owner creates a narrower agent token and approves a restart.
+> the dispatcher stays stopped until the owner approves a restart.
 >
 > [docs/RELEASE_EVIDENCE.md](docs/RELEASE_EVIDENCE.md) separates what was verified, reported by agents, simulated and untested.
 
@@ -156,7 +156,7 @@ these runs, because one account cannot fork its own repository or act as an outs
 fault in the check itself. That is recorded there, and it passed at `8d04045`, which changes only that check.
 
 **What is not proven yet.** No real agent ticket has gone through the new workflow, and the runner has not run against a real open
-GitHub PR. The agents' narrower token does not exist yet, so its inability to set statuses or bypass branch protection is untested.
+GitHub PR. The agents now use their own GitHub App instead of a token under the owner's account. [Live tests on throwaway branches](docs/evidence/app-boundary-probes-2026-11-06.txt) show it cannot set statuses, add workflows or get past branch protection.
 
 **One thing the fixtures found in our first fix.** With nothing else open, an outsider's issue still made the new router
 plan the project. Planning is now the owner's explicit command.
@@ -320,15 +320,15 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
   each comment. GitHub refuses formal "approve" reviews (self-approval), so the gate is two required
   commit statuses.
 - **Gate strength.** `enforce_admins` is off, so the gates do not bind the owner's account. 49 operator commits, mostly scripts,
-  prompts and reports, went straight to `main`. PRs #20, #25 and #26, all operator work, merged with neither gate, including the security fix itself. #26 changes only documentation and evidence. No operator commit touches
-  `app/` or `tests/`. The gate is OS accounts, token permissions and branch protection, not cryptographic separation. The agents'
-  token needs Contents write, which is also what a merge needs, so assume it can merge a green PR. Whether it could also bypass the
-  gates must be tested when it exists. Turning `enforce_admins` on removes that bypass.
+  prompts and reports, went straight to `main`. PRs #20, #25 and the operator PRs after them merged with neither gate, including the security fix itself. No operator commit touches
+  `app/` or `tests/`. The gate is OS accounts, App permissions and branch protection, not cryptographic separation. The agents' App does
+  not share the owner's bypass, and it was [tested](docs/evidence/app-boundary-probes-2026-11-06.txt) to confirm that. It could merge a PR once both gates were green, so `main` now also requires one approving review, with stale
+  approvals dismissed. The App cannot approve its own PR or merge code changed after an approval, so an agent PR needs the owner's approval of that exact code.
 - **Security limits.** Builders can read their own model keys and GitHub token from their shell. Prompt injection is reduced,
   not removed. A candidate written to target the canary could evade it, though it must still pass the runner's own HTTP checks
   and the owner's reading of the diff. The receipt covers the PR head, not the merged result. Details are in
   [security/README.md](security/README.md).
-- **Automation is paused.** It needs a narrower agent token, which only the owner can create, and the owner's decision.
+- **Automation is paused.** It needs the owner's decision. The agents' GitHub App exists, and no agent has run under it yet.
 - **Human findings guided the rework.** Review findings on #2, #3 and #11 came from the operator as well
   as the reviewer. They state outcomes and reproductions, and the code is the builders'. The human side
   caught more serious defects than the reviewer did on the lite-model days, so the gates alone were
@@ -343,15 +343,18 @@ Actual cost is $0, because every key is free tier. The limit that bound us was r
   and pushed the builder away from one, and that URL shows raw JSON if opened directly. Timestamps are raw ISO. A database error during
   a run gives a 500 and stores no row. These are [#21](https://github.com/ambativachan8-cmyk/daily-briefing/issues/21),
   [#22](https://github.com/ambativachan8-cmyk/daily-briefing/issues/22) and [#24](https://github.com/ambativachan8-cmyk/daily-briefing/issues/24).
-  They were found after the team stopped, and the operator did not fix them because agents write the product code.
+  They were found after the team stopped. The operator built and tested a candidate fix for them in [PR #27](https://github.com/ambativachan8-cmyk/daily-briefing/pull/27), and did not merge it or put it live, because agents write the product code.
   Each app restart also adds a run, because the scheduler ticks at startup. The page has no dark-mode styling. A `javascript:` link
   from a feed would be rendered as-is, which cannot happen with today's synthetic feed but would matter on a real one.
+- **An operator mistake on the live service.** On 2026-11-06 at 09:29:22 UTC the operator ran `~/deploy/current/scripts/deploy_app.sh --status` expecting a read-only answer. That
+  copy was an older script, which ignores the flag and deploys. For about 81 seconds the public site served an older database from `~/app`. The production database was not touched, and the
+  previous release was restored at 09:30:43. Run 26 (0 new) is the restart that restore caused, and the next scheduled tick moved. [The evidence](docs/RELEASE_EVIDENCE.md) has the details.
 - **The feed is synthetic,** as the brief allows: one made-up item every 6 hours, matched by a 6-hour
   schedule. A run right after another finds nothing new, as in the brief's example.
 - **The fresh-VM test ran before NVIDIA was added.** `configure_models.sh` handles the key, and it ran on
   the real VM, but not on a fresh one.
 - **Schedule evidence.** Runs 24 and 25 fired at 02:32:42 and 08:32:42 UTC on 2026-11-06, each exactly six hours after the one before, starting from the 20:32:42 start tick, and each found 1 new item.
-  The service has not restarted since 20:32:42 (0 restarts), and its log shows no POST to a run endpoint in either window. An earlier version of this report promised a tick
+  The service did not restart in that time (0 restarts), and its log shows no POST to a run endpoint in either window. An earlier version of this report promised a tick
   at 21:28 UTC, which was wrong, because a restart resets the timer. The scheduler runs in the web process, and the page does not mark which rows were scheduled.
 - **Test debts.** `tests/test_main.py` and `tests/test_scheduler.py` empty the `data/briefing.db` of whichever
   checkout runs them. A deployed release links `data/` to production, so running the suite there would have erased the public
@@ -375,7 +378,7 @@ scp agents/agents.env.example ubuntu@<ip>:~/.secrets/agents.env   # then fill in
 ssh ubuntu@<ip> 'bash ~/agents/_src/scripts/install_all.sh'
 ```
 
-`agents/agents.env.example` lists the two fine-grained GitHub tokens and their permissions. The agents' token has no Commit
+The agents' GitHub identity is now a private GitHub App with Contents, Issues and Pull requests only. Put its key at `~/.secrets/agent-app.pem` and its IDs in `scripts/gate_lib.sh`. `install_dispatch_timer.sh --enable` still expects `AGENT_GH_TOKEN`, so for now step `dispatch.sh` by hand. `agents/agents.env.example` lists the two fine-grained GitHub tokens and their permissions. The agents' token has no Commit
 statuses permission, and setup refuses to continue if both tokens are the same. Then, to confirm without printing a value:
 
 ```bash
