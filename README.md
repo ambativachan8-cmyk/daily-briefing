@@ -3,6 +3,8 @@
 A small scheduled briefing that checks one feed, reports only what is new since the last
 run, and publishes a dated briefing with a run history on a public page.
 
+**Project overview:** [docs/showcase](docs/showcase/README.md) has the architecture, ticket flow, verified capabilities and limits at a glance.
+
 The product code in this repository is written by a team of autonomous agents
 (OpenClaw + Hermes Agent). The human engineer set up the infrastructure, the agent
 runtimes and the ticket protocol, and reviews/merges. See:
