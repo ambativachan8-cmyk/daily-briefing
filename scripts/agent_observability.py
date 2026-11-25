@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""Agent reliability and observability report from the dispatcher's run log.
+
+Reads the per-attempt run log (docs/evidence/runs.jsonl, or ~/logs/usage/runs.jsonl on the
+VM) and writes a Markdown report: attempt outcomes per agent, runtime, provider and model,
+attempts and retries per ticket, the longest failure streaks, and token use per successful
+attempt. Standard library only, so it runs anywhere the log is.
+
+Outcome rule: OpenClaw records `status` (ok / error); Hermes records an exit code
+(0 = success). Anything else is reported as unknown, never guessed.
+
+Usage: python3 scripts/agent_observability.py [runs.jsonl] [report.md]
+"""
+from __future__ import annotations
+
+import json
+import sys
+from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Iterable
+
+DEFAULT_IN = Path("docs/evidence/runs.jsonl")
+DEFAULT_OUT = Path("docs/AGENT_OBSERVABILITY.md")
+
+
+def outcome(run: dict[str, Any]) -> str:
+    status = run.get("status")
+    if status in ("ok", "error"):
+        return "success" if status == "ok" else "failure"
+    exit_code = run.get("exit")
+    if isinstance(exit_code, int):
+        return "success" if exit_code == 0 else "failure"
+    return "unknown"
+
+
+def parse_ts(ts: str) -> datetime:
+    return datetime.strptime(ts, "%Y%m%dT%H%M%SZ")
+
+
+def load(path: Path) -> list[dict[str, Any]]:
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            rows.append(json.loads(line))
+    rows.sort(key=lambda r: r.get("ts", ""))
+    return rows
+
+
+def summarize(rows: Iterable[dict[str, Any]], key) -> list[dict[str, Any]]:
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        groups[str(key(r) or "unrecorded")].append(r)
+    out = []
+    for name, rs in groups.items():
+        oc = [outcome(r) for r in rs]
+        ok = oc.count("success")
+        known = ok + oc.count("failure")
+        tokens = [r["total_tokens"] for r in rs if outcome(r) == "success" and isinstance(r.get("total_tokens"), int)]
+        out.append({
+            "name": name, "attempts": len(rs), "success": ok, "failure": oc.count("failure"),
+            "unknown": oc.count("unknown"), "success_rate": round(100 * ok / known, 1) if known else None,
+            "tokens_per_success": round(sum(tokens) / len(tokens)) if tokens else None,
+        })
+    return sorted(out, key=lambda d: d["attempts"], reverse=True)
+
+
+def tickets(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_issue: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        if r.get("issue"):
+            by_issue[str(r["issue"])].append(r)
+    out = []
+    for issue, rs in by_issue.items():
+        first, last = parse_ts(rs[0]["ts"]), parse_ts(rs[-1]["ts"])
+        ok = sum(outcome(r) == "success" for r in rs)
+        out.append({"issue": issue, "attempts": len(rs), "success": ok, "retries": len(rs) - ok,
+                    "agents": sorted({r.get("agent", "?") for r in rs}),
+                    "span_hours": round((last - first).total_seconds() / 3600, 1)})
+    return sorted(out, key=lambda d: d["attempts"], reverse=True)
+
+
+def failure_streaks(rows: list[dict[str, Any]], top: int = 5) -> list[dict[str, Any]]:
+    """Longest runs of consecutive failed attempts per agent (where retries were spent)."""
+    streaks = []
+    by_agent: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        by_agent[r.get("agent", "?")].append(r)
+    for agent, rs in by_agent.items():
+        cur: list[dict[str, Any]] = []
+        for r in rs + [{"status": "ok"}]:
+            if outcome(r) == "failure":
+                cur.append(r)
+            else:
+                if len(cur) >= 2:
+                    streaks.append({"agent": agent, "length": len(cur), "from": cur[0]["ts"], "to": cur[-1]["ts"],
+                                    "providers": sorted({str(x.get("provider") or "unrecorded") for x in cur})})
+                cur = []
+    return sorted(streaks, key=lambda s: s["length"], reverse=True)[:top]
+
+
+def table(rows: list[dict[str, Any]], cols: list[tuple[str, str]]) -> str:
+    head = "| " + " | ".join(c[1] for c in cols) + " |\n|" + "---|" * len(cols) + "\n"
+    body = "".join("| " + " | ".join("n/a" if r[c[0]] is None else
+                                     (", ".join(r[c[0]]) if isinstance(r[c[0]], list) else str(r[c[0]]))
+                                     for c in cols) + " |\n" for r in rows)
+    return head + body
+
+
+def report(rows: list[dict[str, Any]], source: str) -> str:
+    overall = summarize(rows, lambda r: "all")[0]
+    stat_cols = [("name", "Group"), ("attempts", "Attempts"), ("success", "Succeeded"), ("failure", "Failed"),
+                 ("unknown", "Unknown"), ("success_rate", "Success %"), ("tokens_per_success", "Tokens / success")]
+    parts = [
+        "# Agent observability report\n",
+        f"Generated by `scripts/agent_observability.py` from `{source}`: {overall['attempts']} agent attempts, "
+        f"{rows[0]['ts']} to {rows[-1]['ts']}. Success rate where the outcome was recorded: "
+        f"**{overall['success_rate']}%** ({overall['success']} succeeded, {overall['failure']} failed, "
+        f"{overall['unknown']} unrecorded).\n",
+        "Outcomes come from the runtime: OpenClaw `status`, Hermes exit code. Token counts are those the "
+        "runtimes reported; OpenClaw reports none for NVIDIA, so those rows show n/a. This report measures "
+        "attempts, not code quality. Quality gates are the PR checks described in DELIVERY.md.\n",
+        "## By agent role\n", table(summarize(rows, lambda r: r.get("agent")), stat_cols),
+        "\n## By runtime\n", table(summarize(rows, lambda r: r.get("framework")), stat_cols),
+        "\n## By provider\n", table(summarize(rows, lambda r: r.get("provider")), stat_cols),
+        "\n## By model\n", table(summarize(rows, lambda r: r.get("model")), stat_cols),
+        "\n## By ticket\n",
+        table(tickets(rows), [("issue", "Issue"), ("attempts", "Attempts"), ("success", "Succeeded"),
+                              ("retries", "Failed attempts"), ("agents", "Agents"), ("span_hours", "Span (h)")]),
+        "\n## Longest failure streaks\n",
+        table(failure_streaks(rows), [("agent", "Agent"), ("length", "Consecutive failures"), ("from", "From"),
+                                      ("to", "To"), ("providers", "Providers")]),
+    ]
+    return "\n".join(parts)
+
+
+def main(argv: list[str]) -> int:
+    src = Path(argv[1]) if len(argv) > 1 else DEFAULT_IN
+    out = Path(argv[2]) if len(argv) > 2 else DEFAULT_OUT
+    rows = load(src)
+    if not rows:
+        print(f"no runs in {src}", file=sys.stderr)
+        return 1
+    out.write_text(report(rows, src.as_posix()), encoding="utf-8")
+    print(f"wrote {out} from {len(rows)} attempts")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

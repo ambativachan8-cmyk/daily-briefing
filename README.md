@@ -1,6 +1,11 @@
 # Daily Briefing
 
-A small scheduled briefing that checks one feed, reports only what is new since the last
+An agent-orchestrated software delivery platform and its reference application. Five AI agents
+(Hermes Agent and OpenClaw) plan, build, review and test through GitHub issues and pull requests,
+under a deterministic control plane: label-based dispatch, sandboxed verification of every PR,
+gates only the control plane can set, human approval of every merge, and staged releases on AWS.
+
+The reference application is a small scheduled briefing that checks one feed, reports only what is new since the last
 run, and publishes a dated briefing with a run history on a public page.
 
 The product code in this repository is written by a team of autonomous agents
@@ -13,6 +18,7 @@ runtimes and the ticket protocol, and reviews/merges. See:
 - [DELIVERY.md](DELIVERY.md) — delivery report: team, ticket flow, what broke, tokens, how to reproduce. **Start here.**
 - [docs/RELEASE_EVIDENCE.md](docs/RELEASE_EVIDENCE.md) — what was verified, reported by agents, simulated and untested
 - [security/](security/) — the security boundary of the agent workflow, and the attack fixtures that test it
+- [docs/AGENT_OBSERVABILITY.md](docs/AGENT_OBSERVABILITY.md) — agent reliability per role, runtime, provider, model and ticket, generated from the run log by `scripts/agent_observability.py`
 - Live: https://13-55-31-171.sslip.io
 
 ## Run it locally
